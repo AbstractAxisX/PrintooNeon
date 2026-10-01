@@ -52,3 +52,13 @@ prompt
 server.log
 # Skills directory
 /skills/
+# local databases & sandbox artifacts
+/db/
+/tool-results/
+/download/
+/examples/
+/tests/
+/.zscripts/
+/mini-services/
+/upload/
+agent-ctx/

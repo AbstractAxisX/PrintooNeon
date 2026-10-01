@@ -48,3 +48,21 @@ Stage Summary:
 - Site fully functional at / — classic warm rose theme, light+dark, Persian RTL, Vazirmatn UI
 - Real-neon renderer is WYSIWYG (same drawNeon for preview & export)
 - Orders persisted in SQLite w/ preview image for admin review
+
+---
+Task ID: 10
+Agent: main
+Task: Full self-critique pass — heavy review of the built site (code + live browser + VLM visual analysis + WCAG math + edge-case E2E)
+
+Work Log:
+- Re-read all source files (neon.ts, Designer, NeonCanvas, OrderDialog, store, sections, API, globals.css)
+- Browser E2E re-verification: 0 console errors, 0 page errors, SSR fine, downloads work, order flow intact
+- Captured 10 screenshots (light/dark fold, designer, mobile, day-wall, off, empty, order dialog, long-line, craftstrip)
+- VLM harsh critique on: exported neon PNG (verdict: flat text + blur layers, not tube-like), fold, dark designer, mobile, day-wall, workshop AI image (anatomy defects)
+- Computed WCAG contrast: dark-mode white-on-primary = 3.71:1 (FAIL AA); light primary text on bg 4.31:1 (FAIL small text); muted 4.64:1 pass
+- Verified bugs: (1) textarea 92 chars but canvas silently renders only 30/line; (2) order button enabled on empty text → placeholder "NEON" gets ordered; (3) tablist a11y name "شبروز" (no aria-label); (4) flicker switch has no visible label (tooltip-only → mystery on touch); (5) footer IG handle "atelier.neon@" wrong @ position; (6) hero-wall.jpg 140KB unused asset; (7) export PNG 1.9MB + Persian filename; (8) NE-XXXX 4-digit code collision risk after 5 retries; (9) Google Fonts CDN dependency — blocked/slow in Iran → fontsReady gate could spin forever (P0 deployment risk)
+- Filtered VLM false alarms (workshop image "missing" = lazy-load screenshot artifact; mobile text hallucinations)
+
+Stage Summary:
+- Heavy critique delivered to user in chat: core neon realism ~5.5/10 (bright yes, tube-accurate no), functional 8/10, a11y/contrast fixes needed, P0 = self-host fonts + render v2 (hot color core, blurred reflection, light-wrap, electrode hints)
+- All evidence artifacts in /home/z/my-project/tool-results/critique/

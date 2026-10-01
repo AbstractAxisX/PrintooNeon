@@ -30,6 +30,8 @@ import {
   normalizeDigits,
   getColor,
   getFont,
+  getMode,
+  COLOR_MODES,
   type NeonSpec,
 } from "@/lib/neon";
 
@@ -61,24 +63,24 @@ export function OrderDialog({
 
   const color = getColor(spec.colorId);
   const font = getFont(spec.fontId);
-  const displayText = useMemo(
-    () => text.trim() || "NEON",
-    [text]
-  );
+  const mode = getMode(spec.mode);
+  const modeName = COLOR_MODES.find((m) => m.id === mode)?.name ?? "Solid";
+  const displayText = useMemo(() => text.trim() || "NEON", [text]);
 
-  const phoneValid = /^(\+98|0)?9\d{9}$/.test(normalizeDigits(phone).replace(/[\s-]/g, ""));
+  const normalizedPhone = normalizeDigits(phone).replace(/[\s-]/g, "");
+  const phoneValid = /^\+?[0-9]{7,15}$/.test(normalizedPhone);
   const nameValid = name.trim().length >= 2;
   const canSubmit = phoneValid && nameValid && !submitting;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) {
-      if (!nameValid) toast.error("نام را کامل بنویسید.");
-      else if (!phoneValid) toast.error("شماره تماس معتبر نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹).");
+      if (!nameValid) toast.error("Please enter your full name.");
+      else if (!phoneValid) toast.error("Please enter a valid phone number (e.g. +1 555 234 5678).");
       return;
     }
 
-    // تصویر پیش‌نمایش JPEG سبک برای ارسال همراه سفارش
+    // lightweight JPEG preview to attach to the order
     const { exportNeonImage } = await import("@/lib/neon");
     const shot = exportNeonImage(spec, {
       width: 1200,
@@ -94,11 +96,13 @@ export function OrderDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerName: name.trim(),
-          phone: normalizeDigits(phone).replace(/[\s-]/g, ""),
+          phone: normalizedPhone,
           note: note.trim() || null,
           text: displayText,
           fontId: font.id,
           colorId: color.id,
+          colorId2: spec.colorId2 ?? null,
+          mode,
           widthCm,
           wallMode: spec.wall,
           onState: spec.on,
@@ -106,12 +110,12 @@ export function OrderDialog({
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "خطا در ثبت سفارش");
+      if (!res.ok) throw new Error(data?.error || "Order failed");
       setSuccess({ code: data.code });
-      toast.success("سفارش شما ثبت شد 🎉");
+      toast.success("Your order has been placed 🎉");
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "ثبت سفارش ناموفق بود، دوباره تلاش کنید."
+        err instanceof Error ? err.message : "Could not place the order, please try again."
       );
     } finally {
       setSubmitting(false);
@@ -122,15 +126,15 @@ export function OrderDialog({
     if (!success) return;
     navigator.clipboard.writeText(success.code).then(() => {
       setCopied(true);
-      toast.success("کد سفارش کپی شد.");
+      toast.success("Order code copied.");
       setTimeout(() => setCopied(false), 2000);
     });
   }
 
   function handleDownload() {
     const ok = downloadNeonPng(spec, displayText);
-    if (ok) toast.success("تصویر طرح دانلود شد.");
-    else toast.error("دانلود تصویر ممکن نشد.");
+    if (ok) toast.success("Design image downloaded.");
+    else toast.error("Could not download the image.");
   }
 
   function reset() {
@@ -153,21 +157,21 @@ export function OrderDialog({
           <>
             <DialogHeader className="px-6 pt-6 pb-0">
               <DialogTitle className="text-lg font-extrabold">
-                ثبت سفارش این طرح
+                Order this design
               </DialogTitle>
-              <DialogDescription className="text-muted-foreground text-[13px] leading-6">
-                فرم کوتاه زیر را پر کنید؛ کارشناس ما طرح را می‌بیند، قیمت نهایی و
-                جزئیات ساخت را با شما هماهنگ می‌کند.
+              <DialogDescription className="text-[13px] leading-6 text-muted-foreground">
+                Fill in the short form below — our team will review the design
+                and contact you with the final quote and details.
               </DialogDescription>
             </DialogHeader>
 
-            {/* خلاصه طرح */}
+            {/* design summary */}
             <div className="px-6 pt-4">
               <div className="overflow-hidden rounded-xl border">
                 <NeonCanvas spec={spec} aspect={1.7} />
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                <Badge variant="secondary" className="font-medium">
+                <Badge variant="secondary" className="max-w-full truncate font-medium">
                   {displayText.split("\n").join(" · ").slice(0, 30)}
                 </Badge>
                 <Badge variant="secondary" className="font-medium">
@@ -175,13 +179,13 @@ export function OrderDialog({
                 </Badge>
                 <Badge variant="secondary" className="font-medium">
                   <span
-                    className="ml-1 inline-block h-2 w-2 rounded-full"
+                    className="mr-1 inline-block h-2 w-2 rounded-full"
                     style={{ background: color.tube, boxShadow: `0 0 6px ${color.glow}` }}
                   />
-                  {color.name}
+                  {modeName === "Solid" ? color.name : `${modeName} · ${color.name}`}
                 </Badge>
                 <Badge variant="secondary" className="font-medium">
-                  عرض {widthCm} سانتی‌متر
+                  {widthCm} cm wide
                 </Badge>
               </div>
             </div>
@@ -190,13 +194,13 @@ export function OrderDialog({
               <div className="flex flex-col gap-2">
                 <Label htmlFor="ord-name" className="flex items-center gap-1.5 text-[13px] font-semibold">
                   <User className="h-3.5 w-3.5 text-muted-foreground" />
-                  نام و نام خانوادگی
+                  Full name
                 </Label>
                 <Input
                   id="ord-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="مثلاً: سارا محمدی"
+                  placeholder="e.g. Sarah Miller"
                   maxLength={40}
                   autoComplete="name"
                 />
@@ -205,20 +209,20 @@ export function OrderDialog({
               <div className="flex flex-col gap-2">
                 <Label htmlFor="ord-phone" className="flex items-center gap-1.5 text-[13px] font-semibold">
                   <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                  شماره تماس
+                  Phone number
                 </Label>
                 <Input
                   id="ord-phone"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="۰۹۱۲۳۴۵۶۷۸۹"
+                  placeholder="+1 555 234 5678"
                   inputMode="tel"
                   dir="ltr"
                   className={`text-left ${phone && !phoneValid ? "border-destructive focus-visible:ring-destructive" : ""}`}
                 />
                 {phone && !phoneValid && (
                   <p className="text-[12px] text-destructive">
-                    شماره موبایل معتبر وارد کنید (۱۱ رقم، با ۰۹ شروع شود).
+                    Enter a valid phone number (7–15 digits, optional + country code).
                   </p>
                 )}
               </div>
@@ -226,13 +230,13 @@ export function OrderDialog({
               <div className="flex flex-col gap-2">
                 <Label htmlFor="ord-note" className="flex items-center gap-1.5 text-[13px] font-semibold">
                   <MessageSquareText className="h-3.5 w-3.5 text-muted-foreground" />
-                  توضیحات (اختیاری)
+                  Notes (optional)
                 </Label>
                 <Textarea
                   id="ord-note"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="مثلاً: محل نصب ویترین است، رنگ حاشیه مهم نیست…"
+                  placeholder="e.g. It will hang in a shop window, the exact shade matters…"
                   rows={3}
                   maxLength={300}
                 />
@@ -247,19 +251,20 @@ export function OrderDialog({
                 {submitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    در حال ثبت سفارش…
+                    Placing your order…
                   </>
                 ) : (
-                  "ثبت سفارش"
+                  "Place order"
                 )}
               </Button>
               <p className="text-center text-[11.5px] leading-5 text-muted-foreground">
-                این نسخه بدون قیمت‌گذاری آنلاین است؛ قیمت پس از بررسی طرح اعلام می‌شود.
+                This version has no online pricing — you receive the final quote
+                after we review your design.
               </p>
             </form>
           </>
         ) : (
-          /* ---------- نمای موفقیت ---------- */
+          /* ---------- success view ---------- */
           <div className="flex flex-col items-center px-6 py-10 text-center">
             <div className="relative mb-4">
               <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10">
@@ -267,22 +272,22 @@ export function OrderDialog({
               </div>
               <div className="absolute inset-0 animate-ping rounded-full bg-primary/10" />
             </div>
-            <h3 className="text-xl font-extrabold">سفارشت ثبت شد!</h3>
+            <h3 className="text-xl font-extrabold">Order placed!</h3>
             <p className="mt-2 max-w-xs text-[13px] leading-6 text-muted-foreground">
-              کارشناس ما طرح و تصویرش را می‌بیند و برای هماهنگی قیمت و جزئیات با
-              شما تماس می‌گیرد.
+              Our team will review your design and contact you to confirm the
+              price and details.
             </p>
 
             <Separator className="my-5" />
 
             <div className="flex w-full max-w-xs items-center justify-between gap-3 rounded-xl border bg-muted/40 px-4 py-3">
               <div className="flex flex-col items-start">
-                <span className="text-[11px] text-muted-foreground">کد سفارش</span>
-                <span dir="ltr" className="text-lg font-extrabold tracking-wider text-primary">
+                <span className="text-[11px] text-muted-foreground">Order code</span>
+                <span className="text-lg font-extrabold tracking-wider text-primary">
                   {success.code}
                 </span>
               </div>
-              <Button variant="outline" size="icon" onClick={handleCopyCode} aria-label="کپی کد سفارش">
+              <Button variant="outline" size="icon" onClick={handleCopyCode} aria-label="Copy order code">
                 {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
@@ -294,7 +299,7 @@ export function OrderDialog({
               onClick={handleDownload}
             >
               <Download className="h-4 w-4" />
-              دانلود تصویر طرح
+              Download design image
             </Button>
 
             <Button
@@ -305,7 +310,7 @@ export function OrderDialog({
                 setTimeout(reset, 300);
               }}
             >
-              بستن
+              Close
             </Button>
           </div>
         )}

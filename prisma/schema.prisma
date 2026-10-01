@@ -7,27 +7,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// سفارش طراحی تابلو نئون — نسخه ساده (بدون قیمت‌گذاری و پنل ادمین)
+// Neon sign design order — simple version (no pricing, no admin panel)
 model Order {
-  id          String   @id @default(cuid())
-  code        String   @unique // کد کوتاه سفارش مثل NE-4821
+  id           String   @id @default(cuid())
+  code         String   @unique // short order code like NE-4821
   customerName String
-  phone       String
-  note        String?
+  phone        String
+  note         String?
 
-  // مشخصات طرح نئون
-  text        String // متن کامل (چند خطی با \n)
-  fontId      String
-  fontName    String
-  colorId     String
-  colorName   String
-  widthCm     Int
-  heightCm    Float? // تخمین ارتفاع
-  wallMode    String? // night | day
-  onState     Boolean @default(true)
+  // neon design spec
+  text         String // full text (multi-line with \n)
+  fontId       String
+  fontName     String
+  colorId      String
+  colorName    String
+  colorId2     String?
+  colorName2   String?
+  mode         String   @default("solid") // solid | gradient | duo | rainbow
+  widthCm      Int
+  heightCm     Float? // estimated height
+  wallMode     String? // night | day
+  onState      Boolean  @default(true)
 
-  imageData   String? // data URL تصویر پیش‌نمایش (JPEG)
+  imageData    String? // preview image data URL (JPEG)
 
-  status      String   @default("new") // new | contacted | done
-  createdAt   DateTime @default(now())
+  status       String   @default("new") // new | contacted | done
+  createdAt    DateTime @default(now())
 }

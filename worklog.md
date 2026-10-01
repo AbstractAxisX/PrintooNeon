@@ -66,3 +66,32 @@ Work Log:
 Stage Summary:
 - Heavy critique delivered to user in chat: core neon realism ~5.5/10 (bright yes, tube-accurate no), functional 8/10, a11y/contrast fixes needed, P0 = self-host fonts + render v2 (hot color core, blurred reflection, light-wrap, electrode hints)
 - All evidence artifacts in /home/z/my-project/tool-results/critique/
+
+---
+Task ID: 11
+Agent: main
+Task: V2 rebuild per user feedback — tool-only English studio (no hero/header/footer/steps/faq), single press buttons, 16 Latin fonts grid, 17 colors, 4 color modes, 12 prettier presets, mobile floating mini-preview
+
+Work Log:
+- neon.ts: added ColorMode (solid/gradient/duo/rainbow), colorId2, 17 neon colors, 16 Latin display fonts (Pacifico/GreatVibes/Sacramento/Satisfy/Dancing/Kaushan/Yellowtail/Lobster/Caveat/Bebas/Monoton/Righteous/Passion/Marker/Audiowide/Playfair), per-letter segment renderer (duo alternation + rainbow hue wheel w/ hslToHex), real linear-gradient strokeStyle for gradient mode, ambientGlowColor for wall/shadow
+- Fixed reflection clipping: mirrored pass now clipped to reflection band (VLM confirmed soft fade, no hard cut)
+- design-store: mode/colorId2 + fresh key "neon-studio-draft", skipHydration + manual rehydrate in Designer (fixed returning-user SSR hydration mismatch)
+- Designer: toggle switches REMOVED -> single press buttons (Night/Day wall chips, Flicker, Power On/Off with aria-pressed); font grid (3/4 cols, no horizontal scroll); color-mode chips; second-color swatch row (gradient/duo); per-line overflow warning + char counter; download/order disabled when text empty
+- Mobile floating mini-preview: rAF-throttled scroll watch on preview rect (bottom < 72), AnimatePresence slide-up card w/ live NeonCanvas aspect 2.6, tap = scroll back to preview, hidden while order dialog open, lg:hidden
+- OrderDialog: full English, international phone regex ^\+?[0-9]{7,15}$, mode badge, names via NEON_FONTS/NEON_COLORS lookup
+- Gallery: 12 prettier presets incl. gradient/duo/rainbow showcases
+- layout/page: lang=en dir=ltr, Inter UI font, 17-family Google Fonts link, metadata English, no brand name anywhere; ThemeFab floating corner toggle; deleted Navbar/Hero/CraftStrip/Steps/Faq/Footer + unused public/images
+- prisma: added colorId2/colorName2/mode columns, db:push OK; API: English errors, stores human-readable names
+
+E2E verified (agent-browser):
+- 0 console errors, 0 hydration mismatches (fixed ThemeFab aria-label SSR/client mismatch + zustand skipHydration)
+- 4 color modes: gradient pixel-verified (left RGB 229,166,178 -> right 136,224,213), duo letters alternate (VLM), rainbow distinct letter hues (VLM), solid
+- Power button toggles label On/Off + disables Flicker; Night/Day render walls
+- Font grid click switches renderer; gallery preset applies text+font+mode and scrolls
+- Mobile 390px: mini preview appears when preview scrolled away, hides on scroll-up, live-updates on color change, tap scrolls back; no horizontal scroll
+- Order E2E: NE-7432 stored w/ mode=duo, colorName2=Ice Blue, fontName=Sacramento, 100KB JPEG
+- PNG download works (neon-stay-wild.png); dark mode via FAB clean
+- lint: 0 errors (1 known false-positive warning)
+
+Stage Summary:
+- Site is now a clean embeddable English neon studio: designer + 12 presets only, light/dark, single-button controls, richer fonts/colors/modes, mobile floating live preview

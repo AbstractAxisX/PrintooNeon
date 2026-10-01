@@ -4,20 +4,20 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "آتلیه نئون | طراحی آنلاین تابلو نئون واقعی",
+  title: "Neon Sign Studio | Design your custom neon sign",
   description:
-    "تابلوی نئون واقعی با لوله‌های شیشه‌ای و خم‌کاری دست‌ساز. متن دلخواهت را بنویس، فونت و رنگ را انتخاب کن، تصویر طرح را دانلود کن و سفارش ثبت کن.",
+    "Design a real glass-tube neon sign live: type your text, choose from 16 fonts, 17 colors and 4 color modes, save the image and place your order.",
   keywords: [
-    "تابلو نئون",
-    "نئون واقعی",
-    "طراحی تابلو",
-    "تابلوی نئون دست‌ساز",
-    "آتلیه نئون",
+    "neon sign",
+    "custom neon",
+    "neon designer",
+    "neon sign maker",
+    "glass tube neon",
   ],
   icons: { icon: "/favicon.svg" },
   openGraph: {
-    title: "آتلیه نئون | طراحی آنلاین تابلو نئون واقعی",
-    description: "تابلوی نئون واقعی، دست‌ساز. همین‌جا طرحت را بساز.",
+    title: "Neon Sign Studio | Design your custom neon sign",
+    description: "Real neon, hand-bent glass. Build yours right here.",
     type: "website",
   },
 };
@@ -33,7 +33,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fa" dir="rtl" suppressHydrationWarning>
+    <html lang="en" dir="ltr" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -41,9 +41,9 @@ export default function RootLayout({
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
-        {/* فونت رابط (Vazirmatn) + فونت‌های نئون فارسی و لاتین */}
+        {/* UI font (Inter) + neon display fonts */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Amiri:wght@700&family=Bebas+Neue&family=Great+Vibes&family=Lalezar&family=Monoton&family=Noto+Naskh+Arabic:wght@700&family=Pacifico&family=Vazirmatn:wght@400;500;600;700;800&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Audiowide&family=Bebas+Neue&family=Caveat:wght@700&family=Dancing+Script:wght@700&family=Great+Vibes&family=Kaushan+Script&family=Lobster&family=Monoton&family=Pacifico&family=Passion+One:wght@700&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Righteous&family=Sacramento&family=Satisfy&family=Yellowtail&display=swap"
           rel="stylesheet"
         />
       </head>
@@ -55,7 +55,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
-          <Toaster position="top-center" richColors dir="rtl" />
+          <Toaster position="top-center" richColors />
         </ThemeProvider>
       </body>
     </html>

@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// سفارش طراحی تابلو نئون — نسخه ساده (بدون قیمت‌گذاری و پنل ادمین)
+model Order {
+  id          String   @id @default(cuid())
+  code        String   @unique // کد کوتاه سفارش مثل NE-4821
+  customerName String
+  phone       String
+  note        String?
+
+  // مشخصات طرح نئون
+  text        String // متن کامل (چند خطی با \n)
+  fontId      String
+  fontName    String
+  colorId     String
+  colorName   String
+  widthCm     Int
+  heightCm    Float? // تخمین ارتفاع
+  wallMode    String? // night | day
+  onState     Boolean @default(true)
+
+  imageData   String? // data URL تصویر پیش‌نمایش (JPEG)
+
+  status      String   @default("new") // new | contacted | done
+  createdAt   DateTime @default(now())
+}

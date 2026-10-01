@@ -1,0 +1,953 @@
+     1→<!DOCTYPE html>
+     2→<html lang="fa" dir="rtl">
+     3→<head>
+     4→<meta charset="UTF-8"/>
+     5→<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+     6→<title>داروخانه ابن‌سینا — فروش آنلاین دارو و محصولات سلامت</title>
+     7→
+     8→<script src="https://cdn.tailwindcss.com"></script>
+     9→<script>
+    10→tailwind.config = {
+    11→  theme: {
+    12→    extend: {
+    13→      colors: {
+    14→        page:'#F6F8FB', ink:'#33404E', mute:'#8B96A5',
+    15→        line:'#E8EDF3', soft:'#F2F5F9', seal:'#C9564A',
+    16→        blu:{ DEFAULT:'#2F6DB5', deep:'#255A94', tint:'#E8F2FB', pale:'#F3F8FD' }
+    17→      },
+    18→      fontFamily:{ sans:['Vazirmatn','Tahoma','sans-serif'] }
+    19→    }
+    20→  }
+    21→}
+    22→</script>
+    23→<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css"/>
+    24→
+    25→<style>
+    26→/* ---------- پایه ---------- */
+    27→:root{--blu:#2F6DB5;--blu-deep:#255A94;--tint:#E8F2FB;--soft:#F2F5F9;--line:#E8EDF3;--mute:#8B96A5;--ink:#33404E;--seal:#C9564A;--catsH:48px}
+    28→html{scroll-behavior:smooth}
+    29→body{overflow-x:clip;-webkit-tap-highlight-color:transparent}
+    30→.no-scroll{overflow:hidden}
+    31→::selection{background:var(--blu);color:#fff}
+    32→:focus-visible{outline:2px solid var(--blu);outline-offset:1px;border-radius:6px}
+    33→.ic{width:1.15em;height:1.15em;flex:none}
+    34→mark{background:var(--tint);color:var(--blu-deep);border-radius:3px;padding-inline:1px}
+    35→
+    36→/* ---------- پوسته‌ی شناور ناوبار ---------- */
+    37→#navShell{position:sticky;top:0;z-index:50;max-width:1720px;margin-inline:auto;padding:10px 12px 0}
+    38→#topbar{position:relative;z-index:10;border-radius:24px}
+    39→
+    40→#catsBar{
+    41→  position:relative;z-index:0;height:var(--catsH);
+    42→  width:min(1120px,calc(100% - 40px));margin-inline:auto;margin-top:-1px;
+    43→  border:1px solid var(--line);border-top:0;border-radius:0 0 20px 20px;
+    44→  background:#fff;box-shadow:0 8px 18px -12px rgba(23,50,84,.14);
+    45→  transition:margin-top .38s cubic-bezier(.2,.8,.25,1),opacity .26s ease;
+    46→}
+    47→#navShell.collapsed #catsBar{margin-top:calc(-1px - var(--catsH));opacity:0;pointer-events:none}
+    48→
+    49→/* ✦ FIX — پل نامرئی هاور (ریشه باگ اصلی)
+    50→   قبلاً پل روی خودِ .cat / .mega بود که position نداشتند؛ در نتیجه مرجع
+    51→   قرارگیری‌اش #catsBar می‌شد و به‌جای «زیر دکمه»، به عرضِ کلِ نوار زیر
+    52→   بدنه لاین ۲ می‌نشست و هاور روی بدنه، منوها را باز می‌کرد.
+    53→   حالا پل فقط وقتی منو باز است (.on) و فقط به عرض خود دکمه ساخته می‌شود. */
+    54→@media (hover:hover) and (pointer:fine) and (min-width:768px){
+    55→  .cart-dd::after{content:"";position:absolute;top:100%;inset-inline:0;height:12px}
+    56→  .cat.on .cat-btn::before,.mega.on .mega-btn::before{content:"";position:absolute;bottom:-16px;inset-inline:0;height:18px}
+    57→}
+    58→
+    59→/* ---------- ناوبری صفحات ---------- */
+    60→.main-nav a{position:relative;padding:6px 10px;font-size:13px;font-weight:500;color:var(--mute);transition:color .2s}
+    61→.main-nav a::after{content:"";position:absolute;bottom:2px;inset-inline:10px;height:1.5px;border-radius:99px;background:var(--blu);transform:scaleX(0);transition:transform .28s cubic-bezier(.2,.8,.3,1)}
+    62→.main-nav a:hover{color:var(--ink)}
+    63→.main-nav a.active{color:var(--blu-deep);font-weight:700}
+    64→.main-nav a:hover::after,.main-nav a.active::after{transform:scaleX(1)}
+    65→
+    66→/* ---------- جستجو (عریض) ---------- */
+    67→.searchbox{background:var(--soft);border:1px solid transparent;transition:background .2s,border-color .2s}
+    68→.searchbox:focus-within{background:#fff;border-color:var(--blu)}
+    69→.s-row:hover{background:var(--soft)}
+    70→.s-row.sel{background:var(--tint)}
+    71→
+    72→/* ---------- پنل‌های شناور (دسکتاپ) ---------- */
+    73→.pop{position:absolute;top:calc(100% + 8px);inset-inline:0;z-index:60;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px -18px rgba(23,50,84,.22);opacity:0;visibility:hidden;transform:translateY(-6px);transition:opacity .22s,transform .22s,visibility 0s .22s;max-height:min(76vh,620px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+    74→.pop::-webkit-scrollbar{width:4px}
+    75→.pop::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
+    76→.pop.show{opacity:1;visibility:visible;transform:none;transition:opacity .22s,transform .22s}
+    77→.pop--cart{inset-inline-start:auto;inset-inline-end:0;width:min(336px,calc(100vw - 32px))}
+    78→.pop--search{inset-inline-start:auto;inset-inline-end:0;width:min(400px,calc(100vw - 32px))}
+    79→
+    80→/* ---------- دکمه‌های نوار دسته‌ها ---------- */
+    81→.cat{display:flex}
+    82→.cat-btn{position:relative;height:36px;padding-inline:12px;font-size:13px;font-weight:500;color:#4A5A6D;white-space:nowrap;border-radius:9px;transition:color .2s}
+    83→.cat-btn::after{content:"";position:absolute;bottom:3px;inset-inline:12px;height:1.5px;border-radius:99px;background:var(--blu);transform:scaleX(0);transition:transform .25s}
+    84→.cat-btn:hover{color:var(--blu-deep)}
+    85→.cat-btn:hover::after{transform:scaleX(1)}
+    86→.cat.on .cat-btn{color:var(--blu-deep);font-weight:700}
+    87→.mega-btn{position:relative;display:flex;align-items:center;gap:8px;height:36px;padding-inline:14px;border-radius:10px;background:var(--blu);color:#fff;font-size:12.5px;font-weight:700;white-space:nowrap;transition:background .2s}
+    88→.mega-btn:hover,.mega.on .mega-btn{background:var(--blu-deep)}
+    89→.mega-btn .chev{transition:transform .3s}
+    90→.mega.on .mega-btn .chev{transform:rotate(180deg)}
+    91→
+    92→/* مگا منو: ستون‌ها در دسکتاپ / آکاردئون در موبایل */
+    93→.mega-cols{display:grid;grid-template-columns:repeat(3,1fr);column-gap:26px}
+    94→.mega-sub::before{content:"";width:4px;height:4px;border-radius:99px;background:var(--blu);transform:scale(0);transition:transform .2s;flex:none}
+    95→.mega-sub:hover::before{transform:scale(1)}
+    96→.mega-acc{display:block}
+    97→.acc-body{max-height:0;overflow:hidden;transition:max-height .32s ease}
+    98→.acc.open .acc-body{max-height:460px}
+    99→.acc .acc-chev{transition:transform .3s}
+   100→.acc.open .acc-chev{transform:rotate(180deg)}
+   101→@media(min-width:1150px){
+   102→  .mega-cols{grid-template-columns:repeat(6,1fr);column-gap:0}
+   103→  .mega-cols>*{padding-inline:14px}
+   104→  .mega-cols>:first-child{padding-inline-start:0}
+   105→  .mega-cols>*+*{border-inline-start:1px solid var(--line)}
+   106→}
+   107→@media(max-width:767px){.mega-cols{display:none}}
+   108→@media(min-width:768px){.mega-acc{display:none}}
+   109→
+   110→/* شبکه محصولات + جداکننده مویی */
+   111→.cp-prods{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;margin-top:14px}
+   112→.cp-head{display:flex}
+   113→@media(min-width:760px){
+   114→  .cp-prods{grid-template-columns:repeat(4,1fr);gap:0}
+   115→  .cp-prods>*{padding-inline:14px}
+   116→  .cp-prods>:first-child{padding-inline-start:0}
+   117→  .cp-prods>*+*{border-inline-start:1px solid var(--line)}
+   118→}
+   119→
+   120→/* بج سبد */
+   121→.badge.none{display:none}
+   122→.badge.bump{animation:bump .45s cubic-bezier(.3,1.6,.4,1)}
+   123→@keyframes bump{40%{transform:scale(1.5)}}
+   124→
+   125→.cart-items{max-height:236px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+   126→.cart-items::-webkit-scrollbar{width:4px}
+   127→.cart-items::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
+   128→
+   129→/* ---------- مودال ---------- */
+   130→.overlay{position:fixed;inset:0;z-index:500;background:rgba(24,40,62,.46);display:grid;place-items:center;padding:16px;opacity:0;visibility:hidden;transition:.28s}
+   131→.overlay.show{opacity:1;visibility:visible}
+   132→.modal{transform:translateY(14px) scale(.97);transition:transform .3s cubic-bezier(.2,.9,.3,1.15)}
+   133→.overlay.show .modal{transform:none}
+   134→.segbtn{height:38px;border-radius:99px;font-size:12.5px;font-weight:700;color:var(--mute);transition:.2s}
+   135→.segbtn.on{background:#fff;color:var(--blu-deep);box-shadow:0 2px 8px rgba(38,74,122,.12)}
+   136→.m-form{display:none}
+   137→.m-form.on{display:block}
+   138→.m-input{background:var(--soft);border:1px solid transparent;transition:background .2s,border-color .2s}
+   139→.m-input:focus{outline:0;background:#fff;border-color:var(--blu)}
+   140→.f-err{display:none;font-size:10.5px;color:var(--seal);margin-top:4px;font-weight:600}
+   141→.field.bad .m-input{background:#FDF1EF;border-color:var(--seal)}
+   142→.field.bad .f-err{display:block}
+   143→
+   144→/* ---------- توست ---------- */
+   145→.toast{animation:tIn .32s cubic-bezier(.2,.9,.3,1.2)}
+   146→.toast.out{animation:tOut .28s forwards}
+   147→@keyframes tIn{from{opacity:0;transform:translateY(12px)}}
+   148→@keyframes tOut{to{opacity:0;transform:translateY(8px)}}
+   149→
+   150→/* ---------- کشوی منو ---------- */
+   151→#drawer{transition:transform .32s cubic-bezier(.2,.8,.25,1)}
+   152→#drawer.open{transform:translateX(0)}
+   153→.d-link.active{background:var(--tint);color:var(--blu-deep)}
+   154→#drawerBd{opacity:0;visibility:hidden;transition:opacity .3s,visibility 0s .3s}
+   155→#drawerBd.show{opacity:1;visibility:visible;transition:opacity .3s}
+   156→#sheetBd{opacity:0;visibility:hidden;transition:opacity .3s,visibility 0s .3s}
+   157→#sheetBd.show{opacity:1;visibility:visible;transition:opacity .3s}
+   158→@media(min-width:768px){#sheetBd{display:none}}
+   159→
+   160→.sheet-head{display:none}
+   161→
+   162→/* ---------- موبایل: نوار دسته‌ها = اسکرول افقی ---------- */
+   163→@media(max-width:767px){
+   164→  #catsBar{overflow-x:auto;gap:6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+   165→    -webkit-mask-image:linear-gradient(to left,#000 calc(100% - 26px),transparent);
+   166→    mask-image:linear-gradient(to left,#000 calc(100% - 26px),transparent)}
+   167→  #catsBar::-webkit-scrollbar{display:none}
+   168→  .cat,.mega{flex:none}
+   169→  .cat-btn{background:var(--soft);color:#43536B;font-size:12.5px;font-weight:600;padding-inline:13px;border-radius:10px}
+   170→  .cat-btn::after{display:none}
+   171→  .cat.on .cat-btn{background:var(--blu);color:#fff;font-weight:700}
+   172→  .cp-head{display:none!important}
+   173→  .cp-prods{margin-top:0}
+   174→  .dt-only{display:none!important}
+   175→  .cart-items{max-height:none;overflow:visible}
+   176→}
+   177→
+   178→/* ---------- موبایل: پنل‌ها = شیت پایین صفحه ---------- */
+   179→@media(max-width:767px){
+   180→  .pop{position:fixed;top:auto;bottom:0;left:0;right:0;inset-inline:auto;width:auto;max-width:none;
+   181→    border-radius:18px 18px 0 0;border-bottom:0;max-height:86vh;max-height:86dvh;
+   182→    box-shadow:0 -16px 48px rgba(20,45,78,.2);transform:translateY(103%);
+   183→    transition:transform .34s cubic-bezier(.2,.8,.25,1),opacity .2s ease,visibility 0s .34s}
+   184→  .pop.show{transform:translateY(0);transition:transform .34s cubic-bezier(.2,.8,.25,1),opacity .2s ease}
+   185→  .pop--search{position:absolute;top:calc(100% + 6px);bottom:auto;left:auto;right:auto;inset-inline:0;width:auto;
+   186→    border-radius:12px;border:1px solid var(--line);border-bottom:1px solid var(--line);
+   187→    box-shadow:0 14px 40px -14px rgba(23,50,84,.25);transform:translateY(-6px);max-height:60vh;max-height:60dvh;
+   188→    transition:transform .22s,opacity .22s,visibility 0s .22s}
+   189→  .pop--search.show{transform:none;transition:transform .22s,opacity .22s}
+   190→  .pop--cart{width:auto}
+   191→  .sheet-head{display:block;position:sticky;top:0;background:#fff;z-index:5;padding:10px 16px 8px;border-bottom:1px solid var(--line)}
+   192→  .sheet-grip{display:block;width:40px;height:4px;border-radius:99px;background:var(--line);margin:0 auto 10px}
+   193→}
+   194→
+   195→@media(max-width:639px){
+   196→  .btn-auth{width:40px;padding-inline:0}
+   197→  .btn-auth .a-txt{display:none}
+   198→  #toasts{left:12px;right:12px}
+   199→}
+   200→
+   201→/* مخفی‌سازی تدریجی دسته‌ها در تبلت */
+   202→@media(min-width:768px) and (max-width:1023px){.cat.r2{display:none}}
+   203→@media(min-width:768px) and (max-width:1179px){.cat.r3{display:none}}
+   204→
+   205→@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+   206→</style>
+   207→</head>
+   208→
+   209→<body class="min-h-screen bg-page font-sans text-sm leading-[1.8] text-ink">
+   210→
+   211→<!-- اسپرایت آیکون‌ها -->
+   212→<svg width="0" height="0" class="absolute" aria-hidden="true">
+   213→  <symbol id="i-mortar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.3h16"/><path d="M5.3 10.3c.4 4.8 2.6 7.4 6.7 7.4s6.3-2.6 6.7-7.4"/><path d="M9.8 17.8l-.8 2.4h6l-.8-2.4"/><path d="m10.5 10.3 4.6-5.7"/><circle cx="15.9" cy="3.8" r="1.2"/></symbol>
+   214→  <symbol id="i-tablet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.6"/><path d="M4.4 12h15.2"/></symbol>
+   215→  <symbol id="i-capsule" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(-40 12 12)"><rect x="4.8" y="8.6" width="14.4" height="6.8" rx="3.4"/><path d="M12 8.6v6.8"/></g></symbol>
+   216→  <symbol id="i-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5.2 18.9C5 11.7 10.1 5.2 19 4.6c.6 9-5.7 14.7-13.8 14.3z"/><path d="M5.2 18.9c2.3-5.2 5.8-9 10.7-11.2"/></symbol>
+   217→  <symbol id="i-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6c3.6 4.4 6.2 7.6 6.2 10.7a6.2 6.2 0 0 1-12.4 0c0-3.1 2.6-6.3 6.2-10.7z"/><path d="M9.3 14.8a2.8 2.8 0 0 0 2.3 2.7"/></symbol>
+   218→  <symbol id="i-baby" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M9.3 10.3h.01M14.7 10.3h.01"/><path d="M9.1 14.2c.8.9 1.8 1.4 2.9 1.4s2.1-.5 2.9-1.4"/><path d="M12 3.6c.7-.9 2-.9 2.7-.1"/></symbol>
+   219→  <symbol id="i-stetho" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 4v4.5a4.5 4.5 0 0 0 9 0V4"/><path d="M10 13v3.5a3.7 3.7 0 0 0 7.4 0v-1"/><circle cx="17.4" cy="13.4" r="2.1"/></symbol>
+   220→  <symbol id="i-rx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 20.5v-17h6L18 8v12.5z"/><path d="M13.5 3.5V8H18"/><path d="M10.3 12.5h5.4M10.3 16h3.6"/></symbol>
+   221→  <symbol id="i-call" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.2 16.4v2.3c0 1-.8 1.8-1.8 1.8h-.3C10.6 19.9 4.1 13.4 3.6 5.9v-.3c0-1 .8-1.8 1.8-1.8h2.3c.9 0 1.6.6 1.8 1.4l.5 2.2c.1.7-.1 1.4-.7 1.8l-1.2.9a13.6 13.6 0 0 0 5.8 5.8l.9-1.2c.4-.5 1.1-.8 1.8-.7l2.2.5c.8.2 1.4 1 1.4 1.9z"/></symbol>
+   222→  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+   223→  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+   224→  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.2-3.6 4.2-5 7.5-5s6.3 1.4 7.5 5"/></symbol>
+   225→  <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5h2.2l2.3 11a1.6 1.6 0 0 0 1.6 1.3h8.6a1.6 1.6 0 0 0 1.6-1.3l1.7-8.2H6.4"/><circle cx="10" cy="20" r="1.4"/><circle cx="17.5" cy="20" r="1.4"/></symbol>
+   226→  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2.2"/></symbol>
+   227→  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9.5 6 6 6-6"/></symbol>
+   228→  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H4"/><path d="M10 5.5 4 12l6 6.5"/></symbol>
+   229→  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+   230→  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+   231→  <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 12h13"/></symbol>
+   232→  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15M9.5 6.3V4.8h5v1.5M7 6.5l.7 13.2h8.6L17 6.5"/><path d="M10.3 10.5v5.5M13.7 10.5v5.5"/></symbol>
+   233→  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.8 4.8L19 7"/></symbol>
+   234→  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.8h.01"/></symbol>
+   235→</svg>
+   236→
+   237→<!-- ================= ناوبار شناور ================= -->
+   238→<div id="navShell">
+   239→
+   240→  <header id="topbar" class="border border-line bg-white shadow-[0_6px_20px_-10px_rgba(23,50,84,.10)]">
+   241→    <div class="flex flex-wrap items-center gap-2 px-3 py-2 sm:gap-2.5 sm:px-4">
+   242→
+   243→      <a href="#" class="logo-link flex flex-none items-center gap-2.5" aria-label="داروخانه ابن‌سینا">
+   244→        <span class="grid h-9 w-9 flex-none place-items-center rounded-[11px] bg-blu text-white">
+   245→          <svg class="h-5 w-5"><use href="#i-mortar"/></svg>
+   246→        </span>
+   247→        <span class="leading-tight">
+   248→          <b class="block text-[15px] font-extrabold">داروخانه ابن‌سینا</b>
+   249→          <small class="mt-0.5 hidden text-[10px] text-mute sm:block">فروش آنلاین دارو و محصولات سلامت</small>
+   250→        </span>
+   251→      </a>
+   252→
+   253→      <nav class="main-nav hidden flex-none xl:flex" aria-label="صفحات">
+   254→        <a href="#" class="active">خانه</a>
+   255→        <a href="#">مشاوره دارویی</a>
+   256→        <a href="#">مجله سلامت</a>
+   257→        <a href="#">درباره داروخانه</a>
+   258→        <a href="#">تماس با ما</a>
+   259→      </nav>
+   260→
+   261→      <a href="tel:02191008500" class="hidden h-10 flex-none items-center gap-1.5 rounded-xl bg-blu-tint px-3 text-[12px] font-bold text-blu-deep transition-colors hover:bg-blu hover:text-white 2xl:flex">
+   262→        <svg class="ic"><use href="#i-call"/></svg>
+   263→        <span dir="ltr">۰۲۱-۹۱۰۰۸۵۰۰</span>
+   264→        <span class="font-medium text-blu-deep/70">مشاوره</span>
+   265→      </a>
+   266→
+   267→      <!-- ✦ FIX: ms-auto به سرچ‌باکس منتقل شد → سرچ سمت چپ، کنار سبد و ورود -->
+   268→      <div class="search-wrap relative order-last w-full min-w-0 flex-1 ms-auto max-w-[440px] xl:order-none xl:w-auto">
+   269→        <div class="searchbox flex h-10 items-center gap-1.5 rounded-xl ps-3.5 pe-1">
+   270→          <input type="text" placeholder="جستجو میان دارو، مکمل و محصولات سلامت…" aria-label="جستجو در داروخانه"
+   271→                 class="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-mute/80"/>
+   272→          <button type="button" class="search-btn grid h-8 w-8 flex-none place-items-center rounded-lg text-mute transition-colors hover:bg-white hover:text-blu-deep" aria-label="جستجو">
+   273→            <svg class="ic"><use href="#i-search"/></svg>
+   274→          </button>
+   275→        </div>
+   276→        <div class="pop pop--search p-1.5" id="searchPop"></div>
+   277→      </div>
+   278→
+   279→      <button type="button" class="btn-auth ms-auto xl:ms-0 flex h-10 flex-none items-center justify-center gap-1.5 rounded-xl bg-blu px-3.5 text-[12.5px] font-bold text-white transition-colors hover:bg-blu-deep sm:px-4">
+   280→        <svg class="ic"><use href="#i-user"/></svg>
+   281→        <span class="a-txt hidden sm:inline">ورود / ثبت‌نام</span>
+   282→      </button>
+   283→
+   284→      <div class="cart-dd relative flex-none">
+   285→        <button type="button" class="btn-cart relative grid h-10 w-10 place-items-center rounded-xl bg-soft text-[#43536B] transition-colors hover:bg-blu-tint hover:text-blu-deep" aria-label="سبد خرید">
+   286→          <svg class="ic"><use href="#i-cart"/></svg>
+   287→          <span class="badge none absolute -end-1.5 -top-1.5 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-white bg-seal px-1 text-[10px] font-bold text-white">۰</span>
+   288→        </button>
+   289→        <div class="pop pop--cart" id="cartPop" role="dialog" aria-label="سبد خرید">
+   290→          <div class="sheet-head">
+   291→            <span class="sheet-grip"></span>
+   292→            <div class="flex items-center justify-between">
+   293→              <b class="text-[13px] font-bold">سبد خرید</b>
+   294→              <button type="button" data-close class="grid h-8 w-8 place-items-center rounded-full text-mute transition-colors hover:bg-soft hover:text-ink" aria-label="بستن"><svg class="ic"><use href="#i-x"/></svg></button>
+   295→            </div>
+   296→          </div>
+   297→          <div class="p-4 pb-[max(16px,env(safe-area-inset-bottom))]">
+   298→            <div class="dt-only flex items-center justify-between border-b border-line pb-2.5 text-[13px] font-bold">
+   299→              سبد خرید <span id="cartCount" class="text-[11px] font-medium text-mute"></span>
+   300→            </div>
+   301→            <div class="cart-items" id="cartBody"></div>
+   302→            <div class="mt-2.5 border-t border-line pt-2.5" id="cartFoot">
+   303→              <div class="flex items-center justify-between px-0.5 pb-2 text-[12px] font-medium text-mute">
+   304→                مبلغ قابل پرداخت <b id="cartTotal" class="text-[14.5px] font-extrabold text-ink"></b>
+   305→              </div>
+   306→              <button type="button" id="checkout" class="h-10 w-full rounded-xl bg-blu text-[13px] font-bold text-white transition-colors hover:bg-blu-deep">ثبت سفارش</button>
+   307→              <p class="mt-2 text-center text-[10px] leading-5 text-mute">ارسال داروهای نسخه‌ای پس از تأیید داروساز انجام می‌شود</p>
+   308→            </div>
+   309→          </div>
+   310→        </div>
+   311→      </div>
+   312→
+   313→      <button id="burger" type="button" class="grid h-10 w-10 flex-none place-items-center rounded-xl bg-soft text-[#43536B] transition-colors hover:bg-blu-tint hover:text-blu-deep xl:hidden" aria-label="باز کردن منو">
+   314→        <svg class="ic"><use href="#i-menu"/></svg>
+   315→      </button>
+   316→    </div>
+   317→  </header>
+   318→
+   319→  <!-- لایه دوم -->
+   320→  <div id="catsBar" class="flex items-center gap-1 px-2">
+   321→    <div class="cat mega">
+   322→      <button type="button" class="mega-btn" aria-expanded="false" aria-haspopup="true">
+   323→        <svg class="ic"><use href="#i-grid"/></svg>
+   324→        همه دسته‌بندی‌ها
+   325→        <svg class="ic chev"><use href="#i-chev"/></svg>
+   326→      </button>
+   327→      <div class="pop cat-sheet" id="popMega" role="dialog" aria-label="همه دسته‌بندی‌ها"></div>
+   328→    </div>
+   329→    <!-- دکمه‌های دسته با جاوااسکریپت ساخته می‌شوند -->
+   330→    <button type="button" data-rx class="me-2 ms-auto hidden h-9 flex-none items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-bold text-blu-deep transition-colors hover:bg-blu-tint lg:flex">
+   331→      <svg class="ic"><use href="#i-rx"/></svg>
+   332→      بارگذاری نسخه دارویی
+   333→    </button>
+   334→  </div>
+   335→</div>
+   336→
+   337→<!-- محتوای اصلی صفحه -->
+   338→<main class="min-h-[150vh]"></main>
+   339→
+   340→<!-- کشوی منو (موبایل / تبلت) -->
+   341→<div id="drawerBd" class="fixed inset-0 z-[80] bg-[#16233A]/45"></div>
+   342→<aside id="drawer" class="fixed inset-y-0 left-0 z-[90] flex w-[86vw] max-w-[320px] -translate-x-full flex-col bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="منوی اصلی">
+   343→  <div class="flex items-center justify-between border-b border-line px-4 py-3">
+   344→    <span class="flex items-center gap-2">
+   345→      <span class="grid h-8 w-8 place-items-center rounded-[9px] bg-blu text-white"><svg class="h-[18px] w-[18px]"><use href="#i-mortar"/></svg></span>
+   346→      <b class="text-[14px] font-extrabold">داروخانه ابن‌سینا</b>
+   347→    </span>
+   348→    <button id="drawerClose" type="button" class="grid h-9 w-9 place-items-center rounded-full text-mute transition-colors hover:bg-soft hover:text-ink" aria-label="بستن منو"><svg class="ic"><use href="#i-x"/></svg></button>
+   349→  </div>
+   350→  <div class="flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[max(16px,env(safe-area-inset-bottom))]">
+   351→    <button id="drawerAuth" type="button" class="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blu text-[13px] font-bold text-white transition-colors hover:bg-blu-deep">
+   352→      <svg class="ic"><use href="#i-user"/></svg> ورود / ثبت‌نام
+   353→    </button>
+   354→    <span class="mb-1 mt-4 block px-1 text-[10.5px] font-bold text-mute">صفحات</span>
+   355→    <nav class="space-y-0.5">
+   356→      <a href="#" class="d-link active block rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-soft">خانه</a>
+   357→      <a href="#" class="d-link block rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-soft">مشاوره دارویی</a>
+   358→      <a href="#" class="d-link block rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-soft">مجله سلامت</a>
+   359→      <a href="#" class="d-link block rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-soft">درباره داروخانه</a>
+   360→      <a href="#" class="d-link block rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-soft">تماس با ما</a>
+   361→    </nav>
+   362→    <div class="my-3 border-t border-line"></div>
+   363→    <span class="mb-1 block px-1 text-[10.5px] font-bold text-mute">خدمات</span>
+   364→    <button type="button" data-open="mega" class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-soft">
+   365→      <svg class="ic text-blu"><use href="#i-grid"/></svg> همه دسته‌بندی‌ها
+   366→    </button>
+   367→    <button type="button" data-rx class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-soft">
+   368→      <svg class="ic text-blu"><use href="#i-rx"/></svg> بارگذاری نسخه دارویی
+   369→    </button>
+   370→  </div>
+   371→  <div class="border-t border-line px-4 py-3.5 text-[11.5px] leading-6 text-mute">
+   372→    مشاوره رایگان: <b class="font-bold text-ink" dir="ltr">۰۲۱-۹۱۰۰۸۵۰۰</b>
+   373→    <span class="block text-[10.5px]">شنبه تا جمعه، ۹ صبح تا ۹ شب</span>
+   374→  </div>
+   375→</aside>
+   376→
+   377→<!-- بک‌دراپ شیت‌های موبایل -->
+   378→<div id="sheetBd" class="fixed inset-0 z-[55] bg-[#16233A]/45"></div>
+   379→
+   380→<!-- مودال ورود / ثبت‌نام -->
+   381→<div class="overlay" id="overlay">
+   382→  <div class="modal relative max-h-[92dvh] w-full max-w-[400px] overflow-y-auto rounded-2xl bg-white p-5 sm:p-6" role="dialog" aria-modal="true" aria-label="ورود یا ثبت‌نام">
+   383→    <button type="button" class="m-close absolute start-3.5 top-3.5 grid h-9 w-9 place-items-center rounded-full text-mute transition-colors hover:bg-soft hover:text-ink" aria-label="بستن"><svg class="ic"><use href="#i-x"/></svg></button>
+   384→    <div class="text-center">
+   385→      <span class="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-full bg-blu-tint text-blu-deep"><svg class="h-5 w-5"><use href="#i-mortar"/></svg></span>
+   386→      <div class="text-[16.5px] font-extrabold">به داروخانه ابن‌سینا خوش آمدید</div>
+   387→      <div class="mt-1 text-[12px] text-mute">برای ثبت سفارش و پیگیری نسخه‌ها وارد شوید.</div>
+   388→    </div>
+   389→    <div class="mt-5 grid grid-cols-2 rounded-full bg-soft p-1">
+   390→      <button type="button" class="segbtn on" data-tab="login">ورود</button>
+   391→      <button type="button" class="segbtn" data-tab="register">ثبت‌نام</button>
+   392→    </div>
+   393→    <div class="m-form on mt-4" data-form="login">
+   394→      <form novalidate>
+   395→        <div class="field">
+   396→          <label for="loginPhone" class="mb-1.5 block text-[11.5px] font-bold">شماره موبایل</label>
+   397→          <input id="loginPhone" type="text" inputmode="tel" placeholder="۰۹۱۲ ××× ×××" class="m-input h-11 w-full rounded-xl px-3.5 text-[12.5px]"/>
+   398→          <span class="f-err">شماره موبایل خود را وارد کنید.</span>
+   399→        </div>
+   400→        <div class="field mt-3">
+   401→          <label for="loginPass" class="mb-1.5 block text-[11.5px] font-bold">رمز عبور</label>
+   402→          <input id="loginPass" type="password" placeholder="••••••••" class="m-input h-11 w-full rounded-xl px-3.5 text-[12.5px]"/>
+   403→          <span class="f-err">رمز عبور را وارد کنید.</span>
+   404→        </div>
+   405→        <button type="submit" class="mt-4 h-11 w-full rounded-xl bg-blu text-[13.5px] font-bold text-white transition-colors hover:bg-blu-deep">ورود به حساب</button>
+   406→        <div class="mt-3 text-center text-[11.5px] text-mute">حساب کاربری ندارید؟ <button type="button" class="font-bold text-blu-deep" data-tab="register">ثبت‌نام کنید</button></div>
+   407→      </form>
+   408→    </div>
+   409→    <div class="m-form mt-4" data-form="register">
+   410→      <form novalidate>
+   411→        <div class="field">
+   412→          <label for="regName" class="mb-1.5 block text-[11.5px] font-bold">نام و نام خانوادگی</label>
+   413→          <input id="regName" type="text" class="m-input h-11 w-full rounded-xl px-3.5 text-[12.5px]"/>
+   414→          <span class="f-err">نام خود را وارد کنید.</span>
+   415→        </div>
+   416→        <div class="field mt-3">
+   417→          <label for="regPhone" class="mb-1.5 block text-[11.5px] font-bold">شماره موبایل</label>
+   418→          <input id="regPhone" type="text" inputmode="tel" placeholder="۰۹۱۲ ××× ×××" class="m-input h-11 w-full rounded-xl px-3.5 text-[12.5px]"/>
+   419→          <span class="f-err">شماره موبایل خود را وارد کنید.</span>
+   420→        </div>
+   421→        <div class="field mt-3">
+   422→          <label for="regPass" class="mb-1.5 block text-[11.5px] font-bold">رمز عبور</label>
+   423→          <input id="regPass" type="password" placeholder="••••••••" class="m-input h-11 w-full rounded-xl px-3.5 text-[12.5px]"/>
+   424→          <span class="f-err">رمز عبور را وارد کنید.</span>
+   425→        </div>
+   426→        <button type="submit" class="mt-4 h-11 w-full rounded-xl bg-blu text-[13.5px] font-bold text-white transition-colors hover:bg-blu-deep">ساخت حساب کاربری</button>
+   427→        <div class="mt-3 text-center text-[11.5px] text-mute">قبلاً ثبت‌نام کرده‌اید؟ <button type="button" class="font-bold text-blu-deep" data-tab="login">وارد شوید</button></div>
+   428→      </form>
+   429→    </div>
+   430→  </div>
+   431→</div>
+   432→
+   433→<div id="toasts" class="fixed bottom-4 left-4 z-[600] flex flex-col gap-2"></div>
+   434→
+   435→<script>
+   436→/* ---------- ابزارها ---------- */
+   437→const $  = (s, c = document) => c.querySelector(s);
+   438→const $$ = (s, c = document) => [...c.querySelectorAll(s)];
+   439→const el = h => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+   440→const fa = n => Number(n).toLocaleString('fa-IR');
+   441→const icon = n => `<svg class="ic" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+   442→const img = (seed, w, h) => `https://picsum.photos/seed/${seed}/${w}/${h}.jpg`;
+   443→const canHover = matchMedia('(hover: hover) and (pointer: fine)').matches;
+   444→const mqMobile = matchMedia('(max-width: 767px)');
+   445→const isMobile = () => mqMobile.matches;
+   446→
+   447→/* ---------- داده‌ها ---------- */
+   448→const CATS = [
+   449→  { id:'otc', title:'داروهای بدون نسخه', icon:'tablet', count:412,
+   450→    subs:['مسکن و تب‌بر','سرماخوردگی و آنفولانزا','گوارش و معده','آلرژی و آنتی‌هیستامین','پماد و ضماد'],
+   451→    products:[
+   452→      {id:'o1', name:'قرص استامینوفن کدئین ۳۲۵ میلی‌گرم، بسته ۲۰ عددی', price:18500, old:24000, seed:'ph-o1'},
+   453→      {id:'o2', name:'شربت ضد سرفه دیفن‌هیدرامین ۱۰۰ میلی‌لیتر', price:32000, seed:'ph-o2'},
+   454→      {id:'o3', name:'قرص ایبوپروفن ۴۰۰ میلی‌گرم، بسته ۳۰ عددی', price:36500, seed:'ph-o3'},
+   455→      {id:'o4', name:'پماد هیدروکورتیزون ۱ درصد، تیوب ۱۵ گرمی', price:45000, old:56000, seed:'ph-o4'}]},
+   456→  { id:'sup', title:'مکمل و ویتامین', icon:'capsule', count:356,
+   457→    subs:['مولتی‌ویتامین','ویتامین D و کلسیم','امگا ۳ و روغن ماهی','آهن و فولیک اسید','پروبیوتیک'],
+   458→    products:[
+   459→      {id:'s1', name:'قرص مولتی‌ویتامین روزانه، بسته ۶۰ عددی', price:185000, old:220000, seed:'ph-s1'},
+   460→      {id:'s2', name:'کپسول امگا ۳ روغن ماهی ۱۰۰۰ میلی‌گرم، ۶۰ عددی', price:240000, seed:'ph-s2'},
+   461→      {id:'s3', name:'قرص ویتامین D3، ۱۰۰۰ واحد بین‌المللی، ۹۰ عددی', price:95000, seed:'ph-s3'},
+   462→      {id:'s4', name:'کپسول زینک پلاس سیلنیوم، بسته ۶۰ عددی', price:128000, old:145000, seed:'ph-s4'}]},
+   463→  { id:'herb', title:'گیاهان دارویی', icon:'leaf', count:198,
+   464→    subs:['دمنوش و چای گیاهی','عسل و فرآورده‌های زنبور','روغن‌های گیاهی','شربت‌های گیاهی','اسانس و گلاب'],
+   465→    products:[
+   466→      {id:'h1', name:'دمنوش بابونه، گل خشک درجه یک، ۱۰۰ گرمی', price:68000, seed:'ph-h1'},
+   467→      {id:'h2', name:'شربت پنیرک طبیعی، ۱۲۰ میلی‌لیتر', price:54000, old:63000, seed:'ph-h2'},
+   468→      {id:'h3', name:'روغن سیاه‌دانه بسته‌بندی بهداشتی، ۱۲۰ میلی‌لیتر', price:89000, seed:'ph-h3'},
+   469→      {id:'h4', name:'پماد آلوئه‌ورا خالص، تیوب ۵۰ گرمی', price:72000, seed:'ph-h4'}]},
+   470→  { id:'skin', title:'پوست و مو', icon:'drop', count:287,
+   471→    subs:['مرطوب‌کننده و آبرسان','ضدآفتاب','شامپو و مراقبت مو','ضد جوش و آکنه','کرم دست و بدن'],
+   472→    products:[
+   473→      {id:'k1', name:'کرم آبرسان هیالورونیک اسید، ۵۰ میلی‌لیتر', price:320000, old:380000, seed:'ph-k1'},
+   474→      {id:'k2', name:'شامپو ضدریزش کافئین، ۴۰۰ میلی‌لیتر', price:165000, seed:'ph-k2'},
+   475→      {id:'k3', name:'کرم ضدآفتاب SPF 50 بدون چربی، ۴۰ میلی‌لیتر', price:245000, seed:'ph-k3'},
+   476→      {id:'k4', name:'کرم دست مغذی شی‌باتر و ویتامین E', price:98000, old:112000, seed:'ph-k4'}]},
+   477→  { id:'kids', title:'مادر و کودک', icon:'baby', count:231,
+   478→    subs:['شیرخشک و غذای کودک','پوشک و دستمال مرطوب','لوازم شیردهی','بهداشت و حمام کودک','مراقبت پوست نوزاد'],
+   479→    products:[
+   480→      {id:'b1', name:'شیرخشک نوزاد مرحله ۱، قوطی ۴۰۰ گرمی', price:395000, seed:'ph-b1'},
+   481→      {id:'b2', name:'پوشک کودک سایز ۳، بسته ۴۰ عددی', price:480000, old:520000, seed:'ph-b2'},
+   482→      {id:'b3', name:'شامپو بچه بدون اشک، ۵۰۰ میلی‌لیتر', price:85000, seed:'ph-b3'},
+   483→      {id:'b4', name:'کرم التهاب پوشک کودک، تیوب ۳۰ گرمی', price:64000, seed:'ph-b4'}]},
+   484→  { id:'device', title:'تجهیزات پزشکی', icon:'stetho', count:154,
+   485→    subs:['فشارخون و قند خون','دماسنج و پالس‌اکسیمتر','ارتوپدی و کمردرد','تست تشخیص سریع','لوازم مصرفی درمانی'],
+   486→    products:[
+   487→      {id:'d1', name:'دستگاه فشارخون دیجیتال بازویی، همراه با کیف', price:890000, seed:'ph-d1'},
+   488→      {id:'d2', name:'دماسنج دیجیتال زیرزبانی با گیره محافظ', price:125000, old:150000, seed:'ph-d2'},
+   489→      {id:'d3', name:'پالس‌اکسیمتر انگشتی با نمایشگر رنگی', price:640000, seed:'ph-d3'},
+   490→      {id:'d4', name:'ست تست قند خون همراه ۵۰ نوار', price:410000, old:455000, seed:'ph-d4'}]},
+   491→];
+   492→const allP = [];
+   493→CATS.forEach(c => c.products.forEach(p => { p.cat = c.title; allP.push(p); }));
+   494→const byId = id => allP.find(p => p.id === id);
+   495→
+   496→/* ---------- کارت محصول مشترک ---------- */
+   497→function prodItem(p){
+   498→  const disc = p.old ? Math.round((1 - p.price / p.old) * 100) : 0;
+   499→  return `<div class="p-item">
+   500→    <div class="relative aspect-[4/3] overflow-hidden rounded-lg bg-soft">
+   501→      <img loading="lazy" src="${img(p.seed, 320, 240)}" alt="${p.name}" class="h-full w-full object-cover">
+   502→      ${disc ? `<span class="absolute start-2 top-2 rounded-md bg-white/95 px-1.5 py-0.5 text-[10px] font-bold text-seal">${fa(disc)}٪</span>` : ''}
+   503→    </div>
+   504→    <h4 class="mt-2 line-clamp-2 min-h-[38px] text-[12px] font-semibold leading-[1.6]">${p.name}</h4>
+   505→    <div class="mt-1 flex items-end justify-between gap-1.5">
+   506→      <div>
+   507→        ${p.old ? `<del class="block text-[10.5px] leading-none text-mute">${fa(p.old)}</del>` : ''}
+   508→        <span class="whitespace-nowrap text-[12.5px] font-extrabold leading-tight ${p.old ? 'text-seal' : ''}">${fa(p.price)} <small class="text-[9.5px] font-medium text-mute">تومان</small></span>
+   509→      </div>
+   510→      <button type="button" data-add="${p.id}" aria-label="افزودن ${p.name} به سبد" class="grid h-8 w-8 flex-none place-items-center rounded-lg bg-blu text-white transition-colors hover:bg-blu-deep">
+   511→        <svg class="ic" style="width:.85em;height:.85em"><use href="#i-plus"/></svg>
+   512→      </button>
+   513→    </div>
+   514→  </div>`;
+   515→}
+   516→
+   517→/* ---------- پنل هر دسته ---------- */
+   518→function buildCatPop(c){
+   519→  const pop = el(`<div class="pop cat-sheet" role="dialog" aria-label="${c.title}"></div>`);
+   520→  pop.innerHTML = `
+   521→    <div class="sheet-head">
+   522→      <span class="sheet-grip"></span>
+   523→      <div class="flex items-center justify-between">
+   524→        <b class="text-[13px] font-bold">${c.title}</b>
+   525→        <button type="button" data-close class="grid h-8 w-8 place-items-center rounded-full text-mute transition-colors hover:bg-soft hover:text-ink" aria-label="بستن">${icon('x')}</button>
+   526→      </div>
+   527→    </div>
+   528→    <div class="p-4 pb-[max(16px,env(safe-area-inset-bottom))] sm:p-5">
+   529→      <div class="cp-head flex-wrap items-center gap-x-3 gap-y-2 border-b border-line pb-3">
+   530→        <div class="flex items-center gap-2">
+   531→          <span class="grid h-8 w-8 place-items-center rounded-lg bg-blu-tint text-blu-deep">${icon(c.icon)}</span>
+   532→          <span class="text-[13.5px] font-bold">${c.title}</span>
+   533→          <span class="rounded-full bg-soft px-2 py-0.5 text-[10px] font-medium text-mute">${fa(c.count)} قلم کالا</span>
+   534→        </div>
+   535→        <div class="hidden flex-1 flex-wrap items-center justify-center gap-1.5 md:flex">
+   536→          ${c.subs.slice(0, 3).map(s => `<button type="button" class="h-7 rounded-lg bg-soft px-2.5 text-[11px] font-medium text-mute transition-colors hover:bg-blu-tint hover:text-blu-deep" data-search="${s}">${s}</button>`).join('')}
+   537→        </div>
+   538→        <button type="button" class="ms-auto flex items-center gap-1 whitespace-nowrap text-[12px] font-bold text-blu-deep transition-colors hover:text-blu" data-search="${c.title}">
+   539→          مشاهده همه <svg class="ic" style="width:.85em;height:.85em"><use href="#i-arrow"/></svg>
+   540→        </button>
+   541→      </div>
+   542→      <div class="cp-prods">${c.products.map(prodItem).join('')}</div>
+   543→    </div>`;
+   544→  return pop;
+   545→}
+   546→
+   547→/* تزریق دکمه‌های دسته در لاین دوم */
+   548→const catsBar = $('#catsBar'), rxLink = $('[data-rx]', catsBar);
+   549→CATS.forEach((c, i) => {
+   550→  const wrap = el(`<div class="cat ${i === 4 ? 'r2' : ''} ${i === 5 ? 'r3' : ''}" data-id="${c.id}"></div>`);
+   551→  wrap.append(
+   552→    el(`<button type="button" class="cat-btn" aria-expanded="false" aria-haspopup="true">${c.title}</button>`),
+   553→    buildCatPop(c)
+   554→  );
+   555→  catsBar.insertBefore(wrap, rxLink);
+   556→});
+   557→
+   558→/* ---------- محتوای مگا منو ---------- */
+   559→ $('#popMega').innerHTML = `
+   560→  <div class="sheet-head">
+   561→    <span class="sheet-grip"></span>
+   562→    <div class="flex items-center justify-between">
+   563→      <b class="text-[13px] font-bold">همه دسته‌بندی‌ها</b>
+   564→      <button type="button" data-close class="grid h-8 w-8 place-items-center rounded-full text-mute transition-colors hover:bg-soft hover:text-ink" aria-label="بستن">${icon('x')}</button>
+   565→    </div>
+   566→  </div>
+   567→  <div class="pb-[max(16px,env(safe-area-inset-bottom))]">
+   568→    <div class="mega-cols p-5">
+   569→      ${CATS.map(c => `
+   570→      <div>
+   571→        <button type="button" class="mb-2 flex items-center gap-2 text-[13px] font-bold transition-colors hover:text-blu-deep" data-open="${c.id}">
+   572→          <span class="grid h-8 w-8 flex-none place-items-center rounded-lg bg-blu-tint text-blu-deep">${icon(c.icon)}</span>
+   573→          ${c.title}
+   574→        </button>
+   575→        <ul>
+   576→          ${c.subs.map(s => `<li><button type="button" class="mega-sub flex items-center gap-1.5 py-[3px] text-[12px] text-mute transition-colors hover:text-ink" data-search="${s}">${s}</button></li>`).join('')}
+   577→        </ul>
+   578→      </div>`).join('')}
+   579→    </div>
+   580→    <div class="mega-acc px-4 pt-1">
+   581→      ${CATS.map(c => `
+   582→      <div class="acc border-b border-line last:border-b-0">
+   583→        <button type="button" class="flex w-full items-center gap-2.5 py-3 text-[13px] font-bold" data-acc>
+   584→          <span class="grid h-8 w-8 flex-none place-items-center rounded-lg bg-blu-tint text-blu-deep">${icon(c.icon)}</span>
+   585→          ${c.title}
+   586→          <svg class="ic acc-chev ms-auto text-mute"><use href="#i-chev"/></svg>
+   587→        </button>
+   588→        <div class="acc-body">
+   589→          <ul class="grid grid-cols-2 gap-x-3 pb-2 ps-1">
+   590→            ${c.subs.map(s => `<li><button type="button" class="block w-full py-1.5 text-start text-[12px] text-mute transition-colors hover:text-ink" data-search="${s}">${s}</button></li>`).join('')}
+   591→          </ul>
+   592→          <button type="button" class="mb-3 flex items-center gap-1.5 rounded-lg bg-blu-tint px-3 py-2 text-[12px] font-bold text-blu-deep" data-open="${c.id}">
+   593→            مشاهده محصولات این دسته ${icon('arrow')}
+   594→          </button>
+   595→        </div>
+   596→      </div>`).join('')}
+   597→    </div>
+   598→    <div class="mx-4 mt-1 mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-blu-tint p-3.5 sm:mx-5">
+   599→      <span class="grid h-10 w-10 flex-none place-items-center rounded-full bg-white text-blu-deep"><svg class="h-[18px] w-[18px]"><use href="#i-rx"/></svg></span>
+   600→      <div class="min-w-[200px] flex-1">
+   601→        <b class="block text-[13.5px] font-bold text-blu-deep">داروی نسخه‌ای دارید؟</b>
+   602→        <span class="text-[11.5px] leading-5 text-mute">عکس نسخه را بفرستید تا داروساز ما بررسی کند.</span>
+   603→      </div>
+   604→      <button type="button" class="flex h-9 flex-none items-center gap-1.5 rounded-lg bg-blu px-4 text-[12px] font-bold text-white transition-colors hover:bg-blu-deep" data-rx>
+   605→        بارگذاری نسخه ${icon('arrow')}
+   606→      </button>
+   607→    </div>
+   608→  </div>`;
+   609→
+   610→/* ---------- ارجاع‌ها ---------- */
+   611→const badge = $('.badge'), cartBtn = $('.btn-cart'),
+   612→      cartBody = $('#cartBody'), cartFoot = $('#cartFoot'),
+   613→      cartCountEl = $('#cartCount'), cartTotalEl = $('#cartTotal'),
+   614→      cartPop = $('#cartPop'), cartWrap = $('.cart-dd'),
+   615→      sInput = $('.searchbox input'), sPop = $('#searchPop'),
+   616→      overlay = $('#overlay'), toastsEl = $('#toasts'),
+   617→      sheetBd = $('#sheetBd'), drawer = $('#drawer'), drawerBd = $('#drawerBd'),
+   618→      shell = $('#navShell');
+   619→
+   620→/* ---------- توست ---------- */
+   621→function toast(msg, type = 'check'){
+   622→  const t = el(`<div class="toast flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[12.5px] font-semibold ${type === 'info' ? 'border border-line bg-white text-ink' : 'bg-ink text-white'}">
+   623→    <span class="grid h-7 w-7 flex-none place-items-center rounded-full ${type === 'info' ? 'bg-blu-tint text-blu-deep' : 'bg-blu text-white'}">${icon(type)}</span>
+   624→    <span>${msg}</span></div>`);
+   625→  toastsEl.append(t);
+   626→  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 2800);
+   627→}
+   628→
+   629→/* ---------- سبد خرید ---------- */
+   630→const cart = new Map();
+   631→
+   632→function renderCart(){
+   633→  const items = [...cart.entries()].map(([id, q]) => ({ p: byId(id), q }));
+   634→  const n = items.reduce((a, i) => a + i.q, 0);
+   635→  badge.textContent = fa(n);
+   636→  badge.classList.toggle('none', !n);
+   637→  cartCountEl.textContent = n ? `${fa(items.length)} قلم کالا` : 'خالی';
+   638→  if (!items.length){
+   639→    cartBody.innerHTML = `<div class="px-1 py-6 text-center">
+   640→      <span class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-soft text-mute"><svg class="h-5 w-5"><use href="#i-cart"/></svg></span>
+   641→      <p class="mb-3.5 text-[12px] text-mute">سبد خرید شما خالی است.</p>
+   642→      <button type="button" class="h-9 rounded-lg bg-blu px-5 text-[12px] font-bold text-white transition-colors hover:bg-blu-deep" data-open="mega">شروع خرید</button>
+   643→    </div>`;
+   644→    cartFoot.style.display = 'none';
+   645→    return;
+   646→  }
+   647→  cartFoot.style.display = '';
+   648→  cartBody.innerHTML = items.map(({ p, q }) => `
+   649→    <div class="c-item flex items-center gap-2.5 border-b border-line py-2.5 last:border-b-0">
+   650→      <img src="${img(p.seed, 120, 120)}" alt="${p.name}" class="h-12 w-12 flex-none rounded-lg bg-soft object-cover">
+   651→      <div class="min-w-0 flex-1">
+   652→        <div class="truncate text-[11.5px] font-semibold">${p.name}</div>
+   653→        <div class="mt-1 flex items-center justify-between gap-2">
+   654→          <span class="flex items-center gap-0.5 rounded-lg bg-soft p-0.5">
+   655→            <button type="button" class="grid h-6 w-6 place-items-center rounded-md text-mute transition-colors hover:bg-white hover:text-blu-deep" data-step="-1" data-pid="${p.id}" aria-label="کاهش تعداد"><svg class="ic" style="width:.7em;height:.7em"><use href="#i-minus"/></svg></button>
+   656→            <b class="min-w-5 text-center text-[11.5px]">${fa(q)}</b>
+   657→            <button type="button" class="grid h-6 w-6 place-items-center rounded-md text-mute transition-colors hover:bg-white hover:text-blu-deep" data-step="1" data-pid="${p.id}" aria-label="افزایش تعداد"><svg class="ic" style="width:.7em;height:.7em"><use href="#i-plus"/></svg></button>
+   658→          </span>
+   659→          <span class="whitespace-nowrap text-[11.5px] font-bold">${fa(p.price * q)} <small class="text-[9.5px] font-medium text-mute">تومان</small></span>
+   660→        </div>
+   661→      </div>
+   662→      <button type="button" class="grid h-8 w-8 flex-none place-items-center rounded-lg text-mute transition-colors hover:bg-soft hover:text-seal" data-del="${p.id}" aria-label="حذف از سبد"><svg class="ic" style="width:.85em;height:.85em"><use href="#i-trash"/></svg></button>
+   663→    </div>`).join('');
+   664→  cartTotalEl.textContent = fa(items.reduce((a, { p, q }) => a + p.price * q, 0)) + ' تومان';
+   665→}
+   666→
+   667→function bump(){ badge.classList.remove('bump'); void badge.offsetWidth; badge.classList.add('bump'); }
+   668→
+   669→function flyToCart(srcEl){
+   670→  const r1 = srcEl.getBoundingClientRect(), r2 = cartBtn.getBoundingClientRect();
+   671→  const g = srcEl.cloneNode(true);
+   672→  Object.assign(g.style, { position:'fixed', left:r1.left+'px', top:r1.top+'px', width:r1.width+'px', height:r1.height+'px',
+   673→    borderRadius:'10px', objectFit:'cover', zIndex:700, pointerEvents:'none' });
+   674→  document.body.appendChild(g);
+   675→  const dx = r2.left + r2.width/2 - (r1.left + r1.width/2);
+   676→  const dy = r2.top + r2.height/2 - (r1.top + r1.height/2);
+   677→  g.animate([
+   678→    { transform:'translate(0,0) scale(1)', opacity:1 },
+   679→    { transform:`translate(${dx*.45}px, ${dy*.45 - 70}px) scale(.5)`, opacity:1, offset:.6 },
+   680→    { transform:`translate(${dx}px, ${dy}px) scale(.1)`, opacity:.35 }
+   681→  ], { duration:620, easing:'cubic-bezier(.45,.05,.65,.4)' }).onfinish = () => g.remove();
+   682→}
+   683→
+   684→function addToCart(pid, src, silent){
+   685→  cart.set(pid, (cart.get(pid) || 0) + 1);
+   686→  renderCart();
+   687→  if (silent) return;
+   688→  if (src && !isMobile()) flyToCart(src);
+   689→  bump();
+   690→  toast('به سبد خرید اضافه شد');
+   691→  if (sOpen) closeSearch();
+   692→}
+   693→
+   694→/* ---------- هماهنگی بک‌دراپ و قفل اسکرول ---------- */
+   695→let modalOpen = false, drawerOpen = false;
+   696→function syncOverlays(){
+   697→  const sheet = isMobile() && !!(cur || cartOpen);
+   698→  sheetBd.classList.toggle('show', sheet);
+   699→  document.body.classList.toggle('no-scroll', sheet || modalOpen || drawerOpen);
+   700→}
+   701→
+   702→/* ---------- کنترلر مگا منو + دسته‌ها ----------
+   703→   ✦ FIX: هاور فقط روی «خود دکمه» منو را باز می‌کند؛ بودن ماوس روی
+   704→   «پنلِ باز» آن را نگه می‌دارد. هاور روی بدنه نوار هیچ منویی باز نمی‌کند. */
+   705→const groups = new Map();
+   706→groups.set('mega', { wrap: $('.mega'), btn: $('.mega-btn'), pop: $('#popMega') });
+   707→ $$('.cat[data-id]').forEach(w => groups.set(w.dataset.id, { wrap: w, btn: $('.cat-btn', w), pop: $('.pop', w) }));
+   708→
+   709→let cur = null, closeT;
+   710→function toggle(id, on){
+   711→  const g = groups.get(id);
+   712→  g.pop.classList.toggle('show', on);
+   713→  g.wrap.classList.toggle('on', on);
+   714→  g.btn.setAttribute('aria-expanded', on);
+   715→}
+   716→function openCat(id){
+   717→  clearTimeout(closeT); closeCart(); closeSearch();
+   718→  if (cur === id){ syncOverlays(); return; }
+   719→  if (cur) toggle(cur, false);
+   720→  cur = id; toggle(id, true); syncOverlays();
+   721→}
+   722→function closeCat(){
+   723→  clearTimeout(closeT);
+   724→  if (!cur){ syncOverlays(); return; }
+   725→  toggle(cur, false); cur = null; syncOverlays();
+   726→}
+   727→function schedClose(){ clearTimeout(closeT); closeT = setTimeout(closeCat, 180); }
+   728→
+   729→groups.forEach((g, id) => {
+   730→  if (canHover){ /* هاور فقط با ماوس — دقیقاً روی دکمه و پنل */
+   731→    g.btn.addEventListener('mouseenter', () => openCat(id));
+   732→    g.btn.addEventListener('mouseleave', schedClose);
+   733→    g.pop.addEventListener('mouseenter', () => clearTimeout(closeT)); /* ماوس روی پنل: باز بماند */
+   734→    g.pop.addEventListener('mouseleave', schedClose);
+   735→  }
+   736→  g.btn.addEventListener('click', e => { e.stopPropagation(); cur === id ? closeCat() : openCat(id); }); /* کلیک / لمس */
+   737→});
+   738→
+   739→/* ---------- پورتال شیت‌ها: در موبایل به body منتقل می‌شوند ----------
+   740→   علت: mask روی #catsBar برای فرزندان position:fixed مرجع قرارگیری می‌سازد
+   741→   و خودشان را هم ماسک می‌کند؛ انتقال به body مشکل را ریشه‌ای حل می‌کند. */
+   742→const POP_HOME = new Map();
+   743→function adoptPops(){
+   744→  groups.forEach(g => {
+   745→    const pop = g.pop;
+   746→    if (isMobile()){
+   747→      if (pop.parentElement !== document.body){
+   748→        POP_HOME.set(pop, pop.parentElement);
+   749→        document.body.appendChild(pop);
+   750→      }
+   751→    } else if (pop.parentElement === document.body){
+   752→      const home = POP_HOME.get(pop);
+   753→      if (home) home.appendChild(pop);
+   754→      POP_HOME.delete(pop);
+   755→    }
+   756→  });
+   757→}
+   758→function onBreakpoint(){
+   759→  closeCat(); closeCart(); closeSearch();
+   760→  adoptPops(); syncOverlays();
+   761→}
+   762→try { mqMobile.addEventListener('change', onBreakpoint); }
+   763→catch(e){ mqMobile.addListener(onBreakpoint); }
+   764→adoptPops();
+   765→
+   766→/* ---------- پنل سبد خرید ---------- */
+   767→let cartOpen = false, cartT;
+   768→function openCart(){ clearTimeout(cartT); closeCat(); closeSearch(); cartOpen = true; cartPop.classList.add('show'); syncOverlays(); }
+   769→function closeCart(){ clearTimeout(cartT); cartPop.classList.remove('show'); cartOpen = false; syncOverlays(); }
+   770→if (canHover){
+   771→  cartWrap.addEventListener('mouseenter', openCart);
+   772→  cartWrap.addEventListener('mouseleave', () => { clearTimeout(cartT); cartT = setTimeout(closeCart, 180); });
+   773→}
+   774→cartBtn.addEventListener('click', e => { e.stopPropagation(); cartOpen ? closeCart() : openCart(); });
+   775→
+   776→cartPop.addEventListener('click', e => {
+   777→  const st = e.target.closest('[data-step]');
+   778→  if (st){
+   779→    const id = st.dataset.pid, q = (cart.get(id) || 0) + Number(st.dataset.step);
+   780→    q <= 0 ? cart.delete(id) : cart.set(id, q);
+   781→    renderCart(); return;
+   782→  }
+   783→  const del = e.target.closest('[data-del]');
+   784→  if (del){ cart.delete(del.dataset.del); renderCart(); toast('کالا از سبد خرید حذف شد', 'info'); return; }
+   785→  if (e.target.closest('#checkout')){
+   786→    if (!cart.size){ toast('سبد خرید شما خالی است', 'info'); return; }
+   787→    const t = [...cart.entries()].reduce((a, [id, q]) => a + byId(id).price * q, 0);
+   788→    cart.clear(); renderCart(); closeCart();
+   789→    toast(`سفارش ${fa(t)} تومانی ثبت شد؛ داروخانه برای هماهنگی تماس می‌گیرد`);
+   790→  }
+   791→});
+   792→
+   793→/* ---------- جستجوی زنده ---------- */
+   794→let sOpen = false, sIdx = -1;
+   795→
+   796→const esc  = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+   797→const norm = s => String(s || '').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/\u200c/g,' ').trim();
+   798→function hi(text, q){
+   799→  const i = text.indexOf(q);
+   800→  if (i < 0) return esc(text);
+   801→  return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
+   802→}
+   803→
+   804→function openSearch(){ if (sOpen) return; closeCat(); closeCart(); sOpen = true; sPop.classList.add('show'); }
+   805→function closeSearch(){ if (!sOpen) return; sOpen = false; sIdx = -1; sPop.classList.remove('show'); }
+   806→
+   807→function searchProducts(q){
+   808→  const raw = q.trim(), query = norm(q);
+   809→  if (query.length < 2){ closeSearch(); return; }
+   810→  const res = allP.filter(p => norm(p.name + ' ' + p.cat).includes(query)).slice(0, 8);
+   811→  sIdx = -1;
+   812→  sPop.innerHTML = res.length
+   813→    ? res.map(p => `
+   814→      <button type="button" class="s-row flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-start transition-colors" data-add="${p.id}">
+   815→        <img src="${img(p.seed, 96, 96)}" alt="" class="h-10 w-10 flex-none rounded-lg bg-soft object-cover"/>
+   816→        <span class="min-w-0 flex-1">
+   817→          <span class="block truncate text-[12px] font-semibold leading-5">${hi(p.name, raw)}</span>
+   818→          <span class="mt-0.5 block truncate text-[10.5px] text-mute">${p.cat}</span>
+   819→        </span>
+   820→        <span class="whitespace-nowrap text-[11.5px] font-bold">${fa(p.price)} <small class="text-[9px] font-medium text-mute">تومان</small></span>
+   821→        <span class="s-plus grid h-7 w-7 flex-none place-items-center rounded-lg bg-blu text-white">${icon('plus')}</span>
+   822→      </button>`).join('')
+   823→      + `<div class="mt-1 border-t border-line px-3 pb-1 pt-2 text-center text-[10.5px] text-mute">برای افزودن به سبد، روی نتیجه کلیک کنید</div>`
+   824→    : `<div class="px-4 py-6 text-center">
+   825→        <span class="mx-auto mb-2.5 grid h-11 w-11 place-items-center rounded-full bg-soft text-mute">${icon('search')}</span>
+   826→        <p class="text-[12px] font-semibold">نتیجه‌ای پیدا نشد</p>
+   827→        <p class="mt-1 text-[10.5px] text-mute">عبارت دیگری بیازمایید یا از دسته‌بندی‌ها استفاده کنید.</p>
+   828→      </div>`;
+   829→  openSearch();
+   830→}
+   831→
+   832→function runSearch(q){
+   833→  sInput.value = q;
+   834→  searchProducts(q);
+   835→  if (!isMobile()) sInput.focus();
+   836→}
+   837→
+   838→sInput.addEventListener('input', () => searchProducts(sInput.value));
+   839→sInput.addEventListener('focus', () => { if (norm(sInput.value).length >= 2) searchProducts(sInput.value); });
+   840→sInput.addEventListener('keydown', e => {
+   841→  const rows = $$('.s-row', sPop);
+   842→  if (!rows.length) return;
+   843→  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+   844→    e.preventDefault();
+   845→    sIdx = e.key === 'ArrowDown' ? (sIdx + 1) % rows.length : (sIdx - 1 + rows.length) % rows.length;
+   846→    rows.forEach((r, i) => r.classList.toggle('sel', i === sIdx));
+   847→    rows[sIdx].scrollIntoView({ block:'nearest' });
+   848→  } else if (e.key === 'Enter' && sIdx >= 0){
+   849→    addToCart(rows[sIdx].dataset.add, $('.s-plus', rows[sIdx]));
+   850→  }
+   851→});
+   852→ $('.search-btn').addEventListener('click', () => {
+   853→  norm(sInput.value).length >= 2 ? searchProducts(sInput.value) : sInput.focus();
+   854→});
+   855→
+   856→/* ---------- مودال ورود / ثبت‌نام ---------- */
+   857→function openModal(){
+   858→  modalOpen = true; overlay.classList.add('show'); syncOverlays();
+   859→  setTimeout(() => $('#loginPhone').focus(), 150);
+   860→}
+   861→function closeModal(){ modalOpen = false; overlay.classList.remove('show'); syncOverlays(); }
+   862→
+   863→ $$('.btn-auth, #drawerAuth').forEach(b => b.addEventListener('click', () => { closeDrawer(); openModal(); }));
+   864→ $('.m-close', overlay).addEventListener('click', closeModal);
+   865→overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+   866→
+   867→function setTab(name){
+   868→  $$('.segbtn', overlay).forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+   869→  $$('.m-form', overlay).forEach(f => f.classList.toggle('on', f.dataset.form === name));
+   870→}
+   871→ $$('[data-tab]', overlay).forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+   872→
+   873→ $$('.m-form form', overlay).forEach(f => f.addEventListener('submit', e => {
+   874→  e.preventDefault();
+   875→  let ok = true;
+   876→  $$('.field', f).forEach(fl => {
+   877→    const bad = !$('input', fl).value.trim();
+   878→    fl.classList.toggle('bad', bad);
+   879→    if (bad) ok = false;
+   880→  });
+   881→  if (!ok) return;
+   882→  const isLogin = f.closest('.m-form').dataset.form === 'login';
+   883→  f.reset(); $$('.field', f).forEach(fl => fl.classList.remove('bad'));
+   884→  closeModal();
+   885→  toast(isLogin ? 'خوش آمدید؛ با موفقیت وارد شدید' : 'حساب کاربری شما ساخته شد');
+   886→}));
+   887→
+   888→/* ---------- کشوی منو ---------- */
+   889→function openDrawer(){ drawerOpen = true; drawer.classList.add('open'); drawerBd.classList.add('show'); syncOverlays(); }
+   890→function closeDrawer(){ if (!drawerOpen) return; drawerOpen = false; drawer.classList.remove('open'); drawerBd.classList.remove('show'); syncOverlays(); }
+   891→
+   892→ $('#burger').addEventListener('click', openDrawer);
+   893→ $('#drawerClose').addEventListener('click', closeDrawer);
+   894→drawerBd.addEventListener('click', closeDrawer);
+   895→ $$('.d-link', drawer).forEach(a => a.addEventListener('click', e => {
+   896→  e.preventDefault();
+   897→  $$('.d-link', drawer).forEach(x => x.classList.toggle('active', x === a));
+   898→  closeDrawer();
+   899→}));
+   900→
+   901→sheetBd.addEventListener('click', () => { closeCat(); closeCart(); });
+   902→
+   903→/* ---------- ری‌اکشن سراسری (کلیک) ---------- */
+   904→document.addEventListener('click', e => {
+   905→  const add = e.target.closest('[data-add]');
+   906→  if (add){ addToCart(add.dataset.add, add.matches('.s-row') ? $('.s-plus', add) : add); return; }
+   907→
+   908→  const sr = e.target.closest('[data-search]');
+   909→  if (sr){ closeCat(); closeCart(); closeDrawer(); runSearch(sr.dataset.search); return; }
+   910→
+   911→  const op = e.target.closest('[data-open]');
+   912→  if (op){ closeDrawer(); openCat(op.dataset.open); return; }
+   913→
+   914→  const cl = e.target.closest('[data-close]');
+   915→  if (cl){ cl.closest('.pop') === cartPop ? closeCart() : closeCat(); return; }
+   916→
+   917→  if (e.target.closest('[data-rx]')){
+   918→    closeCat(); toast('برای بارگذاری نسخه دارویی، ابتدا وارد حساب شوید', 'info'); openModal(); return;
+   919→  }
+   920→
+   921→  const ac = e.target.closest('[data-acc]');
+   922→  if (ac){ ac.closest('.acc').classList.toggle('open'); return; }
+   923→
+   924→  /* کلیک بیرون: بستن هرچه باز است */
+   925→  if (!e.target.closest('#catsBar, .pop')) closeCat();
+   926→  if (!e.target.closest('.cart-dd, #cartPop')) closeCart();
+   927→  if (!e.target.closest('.search-wrap')) closeSearch();
+   928→});
+   929→
+   930→/* ---------- کلید Escape ---------- */
+   931→document.addEventListener('keydown', e => {
+   932→  if (e.key !== 'Escape') return;
+   933→  if (modalOpen) closeModal();
+   934→  else if (drawerOpen) closeDrawer();
+   935→  else if (cur) closeCat();
+   936→  else if (cartOpen) closeCart();
+   937→  else if (sOpen){ closeSearch(); sInput.blur(); }
+   938→});
+   939→
+   940→/* ---------- جمع‌شدن لاین دوم هنگام اسکرول به پایین ---------- */
+   941→let lastY = window.scrollY;
+   942→addEventListener('scroll', () => {
+   943→  const y = window.scrollY;
+   944→  if (y > 160 && y > lastY){ shell.classList.add('collapsed'); if (cur) closeCat(); }
+   945→  else if (y < lastY || y <= 160){ shell.classList.remove('collapsed'); }
+   946→  lastY = y;
+   947→}, { passive: true });
+   948→
+   949→/* ---------- شروع ---------- */
+   950→renderCart();
+   951→</script>
+   952→</body>
+   953→</html>

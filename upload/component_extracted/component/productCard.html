@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>کارت محصول · داروخانه</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Noto+Naskh+Arabic:wght@600;700&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  theme: { extend: {
+    colors: { ink:'#26302A', accent:'#2E4B3C', muted:'#8B9188', line:'#E6E1D3', brick:'#C0563F' },
+    fontFamily: { sans:['Vazirmatn','sans-serif'], naskh:['Noto Naskh Arabic','serif'] },
+  }}
+};
+</script>
+<style>
+  body{background-image:radial-gradient(#E3DDCE 1px,transparent 1px);background-size:22px 22px}
+  @keyframes float{50%{transform:translateY(-8px)}}
+  @keyframes pulse{55%{box-shadow:0 0 0 6px rgba(78,138,90,0)}}
+  @keyframes pop{50%{transform:scale(1.2)}}
+  .float{animation:float 5.5s ease-in-out infinite}
+  .stock-dot{box-shadow:0 0 0 0 rgba(78,138,90,.35);animation:pulse 2.2s infinite}
+  .fav.on{animation:pop .4s}
+  .fav.on svg{fill:#C0563F;stroke:#C0563F}
+  .add .ic-check{display:none}
+  .add.on .ic-bag{display:none}
+  .add.on .ic-check{display:block}
+</style>
+</head>
+<body class="min-h-screen grid place-items-center bg-[#F3F0E8] p-10 font-sans text-ink">
+
+  <article class="w-full max-w-[400px] bg-white border border-line rounded-[42px] p-3.5 pb-7 shadow-[0_30px_60px_-30px_rgba(38,48,42,.22)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_44px_80px_-34px_rgba(38,48,42,.3)]">
+
+    <!-- تصویر محصول -->
+    <div class="relative h-[292px] bg-[#E9EFE5] rounded-[30px] grid place-items-center overflow-hidden">
+      <span class="absolute top-4 right-4 z-10 bg-white/90 border border-[#D5DECB] rounded-full px-3.5 py-1.5 text-[11.5px] font-semibold text-accent">مکمل غذایی</span>
+
+      <button id="fav" aria-label="افزودن به علاقه‌مندی‌ها" class="fav absolute top-3.5 left-3.5 z-10 w-[42px] h-[42px] rounded-full bg-white/90 border border-[#D5DECB] grid place-items-center cursor-pointer transition hover:scale-110 active:scale-90">
+        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="#6B7267" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5C7 16.5 3.5 13.2 3.5 9.5 3.5 7 5.5 5 8 5c1.6 0 3.1.8 4 2.1C12.9 5.8 14.4 5 16 5c2.5 0 4.5 2 4.5 4.5 0 3.7-3.5 7-8.5 11z"/></svg>
+      </button>
+
+      <svg viewBox="0 0 240 240" width="188" height="188" aria-hidden="true">
+        <circle cx="120" cy="114" r="96" fill="none" stroke="#D9E2D2" stroke-width="1.5"/>
+        <circle cx="120" cy="114" r="76" fill="none" stroke="#D9E2D2" stroke-width="1.5"/>
+        <ellipse cx="120" cy="216" rx="60" ry="8" fill="#26302A" opacity=".07"/>
+        <circle cx="63" cy="207" r="9" fill="#E4B54B"/>
+        <path d="M63 198.5v17" stroke="#C89A35" stroke-width="1.5"/>
+        <circle cx="60" cy="204" r="2.5" fill="#fff" opacity=".5"/>
+        <g transform="rotate(-28 176 206)">
+          <rect x="160" y="199" width="32" height="14" rx="7" fill="#EAE3D2"/>
+          <path d="M176 199h9a7 7 0 0 1 0 14h-9Z" fill="#4E8A5A"/>
+          <rect x="165" y="202" width="6" height="2.5" rx="1.25" fill="#fff" opacity=".6"/>
+        </g>
+        <g class="float">
+          <path d="M92 82Q92 64 106 62L134 62Q148 64 148 82L148 194Q148 212 130 212L110 212Q92 212 92 194Z" fill="#7C4A2A"/>
+          <rect x="100" y="88" width="9" height="110" rx="4.5" fill="#fff" opacity=".16"/>
+          <rect x="139" y="94" width="5" height="98" rx="2.5" fill="#fff" opacity=".07"/>
+          <rect x="98" y="30" width="44" height="30" rx="8" fill="#EAE3D2"/>
+          <rect x="98" y="30" width="44" height="7" rx="3.5" fill="#DCD3BF"/>
+          <rect x="98" y="110" width="44" height="74" rx="8" fill="#FDFCF7"/>
+          <circle cx="120" cy="132" r="12" fill="#2E4B3C"/>
+          <rect x="117.25" y="123.5" width="5.5" height="17" rx="1.25" fill="#FDFCF7"/>
+          <rect x="111.5" y="129.25" width="17" height="5.5" rx="1.25" fill="#FDFCF7"/>
+          <rect x="106" y="153" width="28" height="3" rx="1.5" fill="#DAD3C2"/>
+          <rect x="110" y="160" width="20" height="3" rx="1.5" fill="#E4DECE"/>
+          <rect x="106" y="167" width="28" height="3" rx="1.5" fill="#DAD3C2"/>
+        </g>
+      </svg>
+    </div>
+
+    <!-- اطلاعات محصول -->
+    <div class="px-3.5 pt-6">
+      <div class="flex items-center justify-between">
+        <span class="text-[12.5px] font-medium text-muted">داروسازی داملران</span>
+        <span class="flex items-center gap-2 text-xs font-semibold text-accent">
+          <span class="stock-dot w-[7px] h-[7px] rounded-full bg-[#4E8A5A]"></span>
+          موجود در انبار
+        </span>
+      </div>
+
+      <h3 class="font-naskh text-2xl font-bold leading-[1.75] mt-2">کپسول امگا-۳ ۱۰۰۰ میلی‌گرم</h3>
+      <p class="text-[13px] text-muted mt-0.5">بسته ۶۰ عددی · استخراج‌شده از روغن ماهی آزاد</p>
+
+      <hr class="my-4 border-0 border-t-[1.5px] border-dashed border-[#DCD6C6]"/>
+
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2 mb-0.5">
+            <s class="text-[13px] text-[#B4AE9E]">۳۲۰٬۰۰۰</s>
+            <span class="text-[11px] font-bold text-brick bg-[#F7E9E4] rounded-full px-2 py-0.5">۱۰٪</span>
+          </div>
+          <div class="flex items-baseline gap-1.5">
+            <span class="text-[25px] font-extrabold tracking-tight">۲۸۵٬۰۰۰</span>
+            <span class="text-[13px] font-medium text-muted">تومان</span>
+          </div>
+        </div>
+
+        <button id="add" class="add flex items-center gap-2 rounded-full bg-accent px-6 py-3.5 text-[14.5px] font-semibold text-[#F5F3EA] cursor-pointer shadow-[0_12px_22px_-10px_rgba(46,75,60,.55)] transition hover:bg-[#24402F] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-3">
+          <svg class="ic-bag w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 8h11l-.9 11.2a1.8 1.8 0 0 1-1.8 1.6H9.2a1.8 1.8 0 0 1-1.8-1.6L6.5 8z"/><path d="M9.2 8V6.8a2.8 2.8 0 0 1 5.6 0V8"/></svg>
+          <svg class="ic-check w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          <span class="lbl">افزودن به سبد</span>
+        </button>
+      </div>
+    </div>
+  </article>
+
+<script>
+const fav = document.getElementById('fav');
+const add = document.getElementById('add');
+const lbl = add.querySelector('.lbl');
+let t;
+
+fav.onclick = () => fav.classList.toggle('on');
+
+add.onclick = () => {
+  add.classList.add('on');
+  lbl.textContent = 'اضافه شد';
+  clearTimeout(t);
+  t = setTimeout(() => { add.classList.remove('on'); lbl.textContent = 'افزودن به سبد'; }, 1600);
+};
+</script>
+</body>
+</html>

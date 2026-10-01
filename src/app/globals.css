@@ -1,0 +1,194 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Vazirmatn", "Tahoma", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "Courier New", monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.75rem;
+
+  /* کلاسیک گرم — کاغذ عاجی + جوهر گرم + رزِ نئونی */
+  --background: hsl(38 33% 97%);
+  --foreground: hsl(22 14% 14%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(22 14% 14%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(22 14% 14%);
+  --primary: hsl(347 74% 52%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(35 25% 93%);
+  --secondary-foreground: hsl(22 12% 22%);
+  --muted: hsl(36 22% 94%);
+  --muted-foreground: hsl(25 8% 44%);
+  --accent: hsl(345 55% 95%);
+  --accent-foreground: hsl(347 65% 34%);
+  --destructive: hsl(0 72% 48%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(35 18% 87%);
+  --input: hsl(35 18% 84%);
+  --ring: hsl(347 74% 52%);
+  --chart-1: hsl(347 74% 52%);
+  --chart-2: hsl(28 80% 52%);
+  --chart-3: hsl(160 60% 40%);
+  --chart-4: hsl(48 85% 45%);
+  --chart-5: hsl(25 60% 40%);
+  --sidebar: hsl(38 33% 97%);
+  --sidebar-foreground: hsl(22 14% 14%);
+  --sidebar-primary: hsl(347 74% 52%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(345 55% 95%);
+  --sidebar-accent-foreground: hsl(347 65% 34%);
+  --sidebar-border: hsl(35 18% 87%);
+  --sidebar-ring: hsl(347 74% 52%);
+}
+
+.dark {
+  /* کلاسیک تیره — زغالی گرم */
+  --background: hsl(20 10% 9%);
+  --foreground: hsl(38 22% 92%);
+  --card: hsl(20 9% 12%);
+  --card-foreground: hsl(38 22% 92%);
+  --popover: hsl(20 9% 12%);
+  --popover-foreground: hsl(38 22% 92%);
+  --primary: hsl(347 82% 60%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(20 8% 17%);
+  --secondary-foreground: hsl(38 20% 88%);
+  --muted: hsl(20 8% 16%);
+  --muted-foreground: hsl(30 8% 62%);
+  --accent: hsl(346 40% 18%);
+  --accent-foreground: hsl(347 85% 78%);
+  --destructive: hsl(0 70% 55%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(20 8% 21%);
+  --input: hsl(20 8% 24%);
+  --ring: hsl(347 82% 60%);
+  --chart-1: hsl(347 82% 60%);
+  --chart-2: hsl(28 85% 55%);
+  --chart-3: hsl(160 60% 45%);
+  --chart-4: hsl(48 90% 50%);
+  --chart-5: hsl(25 60% 45%);
+  --sidebar: hsl(20 10% 9%);
+  --sidebar-foreground: hsl(38 22% 92%);
+  --sidebar-primary: hsl(347 82% 60%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(346 40% 18%);
+  --sidebar-accent-foreground: hsl(347 85% 78%);
+  --sidebar-border: hsl(20 8% 21%);
+  --sidebar-ring: hsl(347 82% 60%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overflow-x: clip;
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::selection {
+    @apply bg-primary/90 text-primary-foreground;
+  }
+}
+
+/* ---------- اسکرول‌بار کلاسیک ---------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(30 10% 70%);
+  border-radius: 999px;
+  border: 2px solid hsl(0 0% 100%);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: hsl(30 8% 32%);
+  border-color: hsl(20 9% 12%);
+}
+
+/* بافت نقطه‌ای کاغذی (الهام از تست HTML خود کاربر) */
+.bg-dots {
+  background-image: radial-gradient(hsl(30 15% 80%) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.dark .bg-dots {
+  background-image: radial-gradient(hsl(25 8% 24%) 1px, transparent 1px);
+}
+
+/* ---------- انیمیشن‌های نئونی UI ---------- */
+@keyframes neon-pulse {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px hsl(347 80% 60% / 0.55)); }
+  50% { opacity: 0.88; filter: drop-shadow(0 0 14px hsl(347 90% 62% / 0.8)); }
+}
+.animate-neon-pulse {
+  animation: neon-pulse 3.2s ease-in-out infinite;
+}
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-floaty {
+  animation: floaty 5.5s ease-in-out infinite;
+}
+
+/* خط زیر عنوان بخش‌ها */
+.section-rule {
+  @apply mx-auto mt-4 h-px w-24 bg-gradient-to-l from-transparent via-primary/60 to-transparent;
+}
+
+/* ظاهر برچسب فرم کلاسیک */
+.field-label {
+  @apply mb-2.5 flex items-center gap-2 text-[13px] font-semibold text-foreground/80;
+}
+
+/* عنوان بخش کلاسیک */
+.section-title {
+  @apply text-2xl font-extrabold tracking-tight sm:text-3xl;
+}

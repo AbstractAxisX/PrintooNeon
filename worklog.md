@@ -1,0 +1,50 @@
+# Project Worklog — آتلیه نئون (Atelier Neon)
+
+Persian RTL neon sign design shop (real glass-tube neon only, no pricing, no admin panel).
+Stack: Next.js 16 App Router, TS, Tailwind 4, shadcn/ui, Prisma+SQLite, zustand persist, framer-motion, sonner.
+Single visible route: `/` + `POST /api/orders`.
+
+---
+Task ID: 1
+Agent: main
+Task: Project kickoff — analysis of reference (customneon.com/create-neon-sign) + uploaded test HTML components + worklog init
+
+Work Log:
+- Extracted /home/z/my-project/upload/component.zip → basePageLayout.html, navbar.html, productCard.html, productSlider.html
+- Read all four: user's taste = Persian RTL, Vazirmatn font, soft rounded classic cards (rounded-3xl+), calm palette, subtle dot-grid paper texture, embla sliders, clean shop feel
+- Fetched customneon.com/create-neon-sign via page_reader: key features = live preview, dark wall preview, multi-layer glow, visual font chips, glowing color swatches, "created on this page" UGC gallery, 3 steps, FAQ accordion, power on/off
+- Decision: build single-page Persian RTL shop «آتلیه نئون» with canvas-based neon renderer (5 glow layers), light+dark classic theme (warm rose accent, no indigo/blue theme), no pricing/admin (order dialog saves to DB with design JSON + JPEG preview)
+
+Stage Summary:
+- Direction locked: classic warm theme, rose-red accent, real-neon-only product
+- Next: prisma schema → layout/theme → neon engine → designer → sections → order API → verify
+
+---
+Task ID: 2-9
+Agent: main
+Task: Build complete «آتلیه نئون» — Persian RTL real-neon sign design shop (single route /), light+dark classic theme, no pricing/admin
+
+Work Log:
+- lib/neon.ts: canvas neon engine — 5-layer glow (wide halo / tight halo / tube body / bright core / hot filament), stroke-based hollow tube letters, night+day walls w/ ambient tint + vignette, floor reflection (night), off-state pale glass tubes, flickerLevel(t) buzz+stutter, auto-fit multi-line layout, exportNeonImage (1600x1000 PNG / JPEG for orders), estimateSizeCm, digit normalization
+- 9 real neon colors (rose/red/orange/gold/green/aqua/ice/violet/warm-white), 8 fonts (4 Persian: Lalezar/Vazirmatn/Naskh/Amiri + 4 Latin: Pacifico/GreatVibes/Monoton/Bebas)
+- design-store.ts: zustand + persist (draft autosave in localStorage)
+- NeonCanvas.tsx: dpr-aware, ResizeObserver, fonts-ready gating, rAF loop for flicker
+- Designer.tsx: preview card (wall tabs, power switch, flicker switch, size estimate, download, order) + controls card (textarea 3-line/30-char, font chips w/ live samples, glowing color swatches, 6 size chips)
+- OrderDialog.tsx: summary (mini canvas + badges), name/phone(Persian-digit normalize)/note, success view with code NE-XXXX + copy + download
+- api/orders/route.ts: zod validation, unique short code, stores design + JPEG dataURL; prisma Order model pushed to SQLite
+- Sections: Navbar (sticky blur, theme toggle), Hero (live neon canvas + floaty), Gallery (6 clickable presets → apply to store + scroll), CraftStrip (AI-generated workshop photo + real-neon story), Steps (3), FAQ (accordion), Footer (mt-auto sticky bottom)
+- Generated images: public/images/workshop.jpg + hero-wall.jpg (z-ai image CLI)
+
+Bugs found & fixed during Agent Browser E2E:
+1. Grid blowout: font-chip flex row forced min-content 842px → preview column collapsed to 238px. Fixed with min-w-0 on cards + chip row.
+2. Flicker never animated: flicker was in store but NOT in NeonSpec passed to canvas (spec.flicker undefined). Added flicker to NeonSpec + memo deps.
+3. Hero caption sticker overlapped canvas edge → moved to clean caption row below.
+4. ESLint react-hooks/set-state-in-effect on mounted pattern → replaced with useSyncExternalStore-based useMounted.
+5. Touch sizes: navbar CTA h-9, size chips py-2.5.
+
+E2E verified (agent-browser): SSR RTL renders; text/color/font/wall/power/size all update canvas (pixel-verified); 2-line text; flicker rAF animates (61 frames/1.2s, pixel delta confirmed); order submitted E2E → DB record NE-4859 w/ normalized phone + 93KB JPEG; success dialog shows code; gallery preset click applies + scrolls; dark mode + light mode both clean; mobile 390px stacks, no real horizontal scroll (body overflow-x clip, scrollX=0); FAQ accordion single-open works; 0 console errors, 0 hydration warnings; lint clean (1 false-positive warning re fonts rule for pages router).
+
+Stage Summary:
+- Site fully functional at / — classic warm rose theme, light+dark, Persian RTL, Vazirmatn UI
+- Real-neon renderer is WYSIWYG (same drawNeon for preview & export)
+- Orders persisted in SQLite w/ preview image for admin review

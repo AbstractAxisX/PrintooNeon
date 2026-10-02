@@ -110,6 +110,25 @@ jobs:
           echo "$resp"
           echo "$resp" | grep -q '"ok":true' && echo "EXTERNAL_API_OK"
 
+      - name: Remove test orders
+        if: ${{ github.event.inputs.mode == 'clean-tests' }}
+        run: |
+          set -e
+          sshpass -e ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'EOS'
+          set -e
+          cd /opt/printoo
+          cat > /tmp/clean.mjs <<'JS'
+          import { PrismaClient } from "@prisma/client";
+          const db = new PrismaClient();
+          const r = await db.order.deleteMany({ where: { customerName: { in: ["Health Check", "Ext Check"] } } });
+          console.log("deleted test orders:", r.count);
+          await db.$disconnect();
+          JS
+          /root/.bun/bin/bun /tmp/clean.mjs
+          rm -f /tmp/clean.mjs
+          echo CLEAN_OK
+          EOS
+
       - name: Upload project to server
         if: ${{ github.event.inputs.mode == 'deploy' }}
         run: |

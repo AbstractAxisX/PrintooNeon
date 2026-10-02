@@ -273,3 +273,17 @@ Stage Summary:
 - Single-line is now a REAL thin neon tube with the exact double-line white-core recipe — same glow language, no more fat letters, for Latin and Persian/Kurdish alike.
 - Admin order detail: animated GIFs actually animate (compact flat-bg preview) + user's cycle/flow timings displayed.
 - Per-letter orders: full 23-color palette allowed and the per-letter color map is shown per letter (per word for Arabic script) in the admin detail.
+
+---
+Task ID: singleline-look-gif-admin-deploy
+Agent: main (Z.ai Code)
+Task: Ship the single-line tube look + animated order GIFs + admin timing/per-letter detail to the live server.
+
+Work Log:
+- Commit 8bcbbad pushed → dispatched "Server Deploy" mode=deploy port=3100 → run 37006409874 SUCCESS (bun install → prisma generate/db push → next build → systemd printoo.service restarted).
+- Verify run 37006572618 SUCCESS: printoo.service active, GET / 200, POST /api/orders 201 (internal NE-1620 + EXTERNAL_API_OK NE-1906), ADMIN_LOGIN_OK + ADMIN_LIST_OK, kurdish font 200.
+- Pre-existing services untouched: printoo24-admin.service active (200), nginx :80 → 301, all 5 docker containers "Up 3 months".
+- clean-tests run 37006788491 SUCCESS: "deleted test orders: 2" — server DB clean again.
+
+Stage Summary:
+- LIVE at http://187.124.27.96:3100 with the thin single-line neon tube (white core recipe), always-animating compact order GIFs, admin timing row + per-letter color chips, and the 23-color per-letter cap.

@@ -150,3 +150,23 @@ E2E verified (agent-browser):
 
 Stage Summary:
 - 5 color modes incl. restored Gradient; fonts in an inline accordion; pushed to GitHub
+
+---
+Task ID: hotfix-font-accordion-height
+Agent: main (Z.ai Code)
+Task: Font accordion had a fixed height — only a few fonts visible, the rest overflowed/escaped the frame. User demanded: no height limit, all fonts shown comfortably.
+
+Work Log:
+- Located the bug: `FontAccordion.tsx` wrapped the font grid in `<ScrollArea className="max-h-[340px]">` — Radix ScrollArea mis-measures inside Radix Accordion's animated content, letting cards visually escape the border box.
+- Removed the ScrollArea + max-height entirely; the grid renders at full natural height (~1100px for 27 fonts) and the page scrolls normally.
+- Confirmed the parent controls Card in `Designer.tsx` has no overflow/max-height constraint.
+- Made font-count labels dynamic (`NEON_FONTS.length`) in both FontAccordion and Designer (was hardcoded "27").
+- Lint clean. E2E via agent-browser: opened accordion → 27/27 fonts rendered, `contentMaxHeight: none`, 0 cards outside the accordion frame (desktop 1440px and mobile 375px, 3-col grid intact).
+- Search: "vibes" → exactly 1 result (Great Vibes); clearing restores all 27. Selection verified incl. the very last font (Cinzel) at the bottom of the tall list — header + aria-checked update correctly.
+- Fresh browser launch: 0 page errors (earlier console entries were dev-only HMR artifacts from editing while the browser was open). dev.log: only 200/201 responses.
+- Vision AI on full-page screenshot: all 6 category headers visible, Cinzel fully inside the bordered box, no card clipped or escaping.
+- Committed `552b4d2` and pushed to github.com/AbstractAxisX/PrintooNeon (main).
+
+Stage Summary:
+- Font accordion now expands to full height — every font visible at once, no internal scroll, no clipping, no overflow bug.
+- Screenshots: tool-results/font-accordion-fullpage.png (definitive), -open.png, -mobile.png, -desktop-final.png.

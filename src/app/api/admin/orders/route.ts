@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
         widthCm: true,
         backgroundId: true,
         colorsJson: true,
+        configJson: true,
         status: true,
         createdAt: true,
       },

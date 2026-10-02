@@ -47,7 +47,7 @@ import {
   type ColorMode,
   type LineMode,
 } from "@/lib/neon";
-import { getColor } from "@/lib/colors";
+import { getColor, mixHex } from "@/lib/colors";
 import { NEON_FONTS, getFont } from "@/lib/fonts";
 import {
   useDesign,
@@ -667,8 +667,9 @@ export function Designer() {
                         style={
                           m.id === "single"
                             ? {
-                                color: activeColor.tube,
-                                textShadow: `0 0 10px ${activeColor.glow}`,
+                                // thin tube with a white-hot core + glow, like the real render
+                                color: mixHex(activeColor.tube, "#FFFFFF", 0.5),
+                                textShadow: `0 0 7px ${activeColor.glow}, 0 0 16px ${activeColor.glow}`,
                               }
                             : {
                                 color: "transparent",

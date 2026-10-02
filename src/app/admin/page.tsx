@@ -37,8 +37,10 @@ import {
   KeyRound,
   ChevronRight,
   Spline,
+  Timer,
 } from "lucide-react";
-import { COLOR_MODES, hasRTL } from "@/lib/neon";
+import { COLOR_MODES, hasRTL, textTokens } from "@/lib/neon";
+import { getColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 
 interface AdminOrder {
@@ -59,6 +61,8 @@ interface AdminOrder {
   widthCm: number;
   backgroundId: string | null;
   colorsJson: string | null;
+  /** full design config as sent by the designer (timings, per-letter colors) */
+  configJson: string | null;
   hasImage: boolean;
   isGif: boolean;
   status: string;
@@ -455,7 +459,23 @@ function OrderDetailDialog({
     }
   })();
 
+  // full design config (timings, per-letter paint map) — sent by the designer
+  const cfg: Record<string, unknown> = (() => {
+    try {
+      return order.configJson ? (JSON.parse(order.configJson) as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  })();
+  const letterColors = (cfg.letterColors ?? {}) as Record<string, string>;
+  const cycleHold = typeof cfg.cycleHold === "number" ? cfg.cycleHold : 1;
+  const cycleFade = typeof cfg.cycleFade === "number" ? cfg.cycleFade : 0.8;
+  const flowSpeed = typeof cfg.flowSpeed === "number" ? cfg.flowSpeed : 1;
+  const cycleCount = Array.isArray(cfg.cycleColors) ? cfg.cycleColors.length : 0;
+  const flowCount = Array.isArray(cfg.flowColors) ? cfg.flowColors.length : 0;
+
   const rtl = hasRTL(order.text);
+  const tokens = order.mode === "perLetter" ? textTokens(order.text) : [];
 
   async function setStatus(status: string) {
     setBusy(true);
@@ -567,6 +587,20 @@ function OrderDetailDialog({
             <Row icon={<Spline className="h-3.5 w-3.5" />} label="Tube">
               {order.lineMode === "single" ? "Single-line (solid text)" : "Double-line (outline)"}
             </Row>
+            {(order.mode === "cycle" || order.mode === "flow") && (
+              <Row icon={<Timer className="h-3.5 w-3.5" />} label="Timing">
+                {order.mode === "cycle" ? (
+                  <span className="tabular-nums">
+                    each color holds {cycleHold}s · crossfade {cycleFade}s ·{" "}
+                    {cycleCount || colors.length} colors in sequence
+                  </span>
+                ) : (
+                  <span className="tabular-nums">
+                    flow speed {flowSpeed}× · {flowCount || colors.length} colors sweeping
+                  </span>
+                )}
+              </Row>
+            )}
             <Row icon={<Ruler className="h-3.5 w-3.5" />} label="Size">
               {order.widthCm} cm wide
             </Row>
@@ -593,6 +627,51 @@ function OrderDetailDialog({
                   {i + 1}. {c.name}
                 </span>
               ))}
+            </div>
+          )}
+
+          {/* per-letter / per-word paint map, exactly as the customer set it */}
+          {order.mode === "perLetter" && tokens.length > 0 && (
+            <div className="rounded-lg border bg-muted/30 px-2.5 py-2">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                color per {rtl ? "word" : "letter"} — as painted
+              </p>
+              <div
+                dir={rtl ? "rtl" : "ltr"}
+                className={cn("flex flex-wrap items-center gap-1", rtl && "justify-end")}
+              >
+                {tokens.map((tok) => {
+                  const id = letterColors[String(tok.index)] ?? order.colorId;
+                  const c = getColor(id);
+                  const blank = tok.ch.trim() === "";
+                  return (
+                    <span
+                      key={tok.index}
+                      className={cn(
+                        "rounded-md px-1.5 py-0.5 text-[13px] font-semibold",
+                        blank ? "text-muted-foreground/50" : "border"
+                      )}
+                      style={
+                        blank
+                          ? undefined
+                          : {
+                              color: c.tube,
+                              textShadow: `0 0 8px ${c.glow}`,
+                              borderColor: `${c.glow}66`,
+                              background: `${c.glow}12`,
+                            }
+                      }
+                    >
+                      {blank ? "·" : tok.ch}
+                    </span>
+                  );
+                })}
+              </div>
+              {rtl && (
+                <p className="mt-1.5 text-[10.5px] text-muted-foreground">
+                  Arabic-script letters join inside a word, so whole words share one tube color.
+                </p>
+              )}
             </div>
           )}
 

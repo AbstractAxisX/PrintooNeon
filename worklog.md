@@ -254,3 +254,22 @@ Work Log:
 Stage Summary:
 - LIVE at http://187.124.27.96:3100 — single-line tube mode + forced single-line for Persian/Kurdish, admin orders TABLE with row-click detail, in-panel password change.
 - Admin can now change the panel password themselves; DB row (seeded from env) becomes the source of truth after the first change.
+
+---
+Task ID: singleline-look-gif-admin
+Agent: main (Z.ai Code)
+Task: 1) Single-line mode looked like FAT colored text, no neon feel ("the line itself is white in double-line — do the same for single-line"). 2) Admin panel: the cycle-effect GIF didn't run and the user's cycle/flow timing values were not shown. 3) Per-letter color option was capped at 10 colors; remove the cap and show per-letter colors in the order detail.
+
+Work Log:
+- Root cause single-line: the old render filled the whole glyph with saturated tube color + an extra 0.4*tube fattening stroke + a barely visible 0.35-alpha core fill → fat solid letters, no white core, weak halo. The double-line recipe (tube color + white CORE stroke + near-white FILAMENT stroke, additive) is what made it pretty.
+- neon.ts new single-line pipeline: fontStrokeRatio() measures a font's ink-stroke thickness once per font (offscreen pixel-scan of "o"/"م", median ink run, cached). singleLineGeom() thins the letters to a real TUBE width (min 42% of ink, clamped to tube*1.05..1.9, never fatter than the font) via erodedText(): fillText mask → destination-out contour stroke (uniform erosion, joins stay shaped) → source-in tint → blit. Layers now mirror double-line exactly: gas glow (body*1.8 eroded, additive) → bloom (tubeRef = body, multipliers 1.6/4.5/11, higher alphas) → tube body (erodedBody) → white-hot CORE (erodeBody + 0.28*body) → FILAMENT (erodeBody + 0.42*body). Off-state uses the same eroded thin tube.
+- Removed the fattening stroke + old core fill; fillLine deleted. LINE_MODES blurbs + Designer tube-style demo glyph updated (white-tinted core + double glow).
+- Order GIF (root cause of "doesn't run"): photo backgrounds made 640x400 GIFs multi-MB → >7.5MB fallback to a static JPEG (and 8MB API cap). Now exportNeonGif takes flatBackground (photo bg → flat charcoal for the ORDER preview only; user download keeps the real bg) + cycleHoldCap 2.5s so long holds still visibly animate; compact 560x350, flowFrames 26, frameBudget 44, 10 fade steps. Result: 55-frame 1.37MB GIF that animates in the admin detail; real timings travel in configJson.
+- Admin detail: list API now returns configJson; detail parses it and shows a "Timing" row (cycle: hold Xs · crossfade Ys · N colors in sequence; flow: speed N× · N colors sweeping) and a "COLOR PER LETTER — as painted" chip row (textTokens + letterColors, RTL = word chips + explainer, unpainted letters fall back to the base color).
+- Orders API: colors zod .max(10) → .max(23) (whole palette usable in per-letter designs).
+- E2E (agent-browser + VLM + DOM asserts): double-line unchanged & still gorgeous (VLM: hollow tubes + white core, realistic); single-line "Good Vibes" = thin tube + white-hot core + lush halo; Anton NEON worst case: measured tube = 5–8px on 597px canvas (thin); «سلام» joined + thin + white core; per-letter LOVE each letter its color; off-state = thin pale unlit tubes; order NE-3597 cycle 3s hold → admin row → detail: 55-frame data:image/gif (isGif), Timing "each color holds 3.5s · crossfade 0.8s · 3 colors in sequence"; API order with 15 colors → 201; LOVE order NE-2282 → admin detail chips L rose / O hotpink / V red / E gold (DOM style-verified); mobile 375px clean; 0 page/server errors; lint clean; tsc deltas vs base unchanged (6 pre-existing).
+
+Stage Summary:
+- Single-line is now a REAL thin neon tube with the exact double-line white-core recipe — same glow language, no more fat letters, for Latin and Persian/Kurdish alike.
+- Admin order detail: animated GIFs actually animate (compact flat-bg preview) + user's cycle/flow timings displayed.
+- Per-letter orders: full 23-color palette allowed and the per-letter color map is shown per letter (per word for Arabic script) in the admin detail.

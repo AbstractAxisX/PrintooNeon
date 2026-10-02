@@ -30,6 +30,7 @@ import {
   exportNeonImage,
   exportNeonGif,
   normalizeDigits,
+  resolveBackground,
   getColor,
   getFont,
   getMode,
@@ -166,12 +167,17 @@ export function OrderDialog({
       let thumb: string | null = null;
       if (isAnimatedMode(mode)) {
         toast.info("Rendering your animated design…");
-        // compact settings: good motion, order-friendly payload size
+        // compact order preview: flat charcoal instead of photo backgrounds
+        // (flat areas compress — the GIF stays small AND clearly animated),
+        // holds capped so every color change is visible in the loop
+        const bgIsPhoto = resolveBackground(spec.background ?? { id: "brick" }).kind === "image";
         const blob = await exportNeonGif(spec, {
-          width: 640,
-          height: 400,
-          flowFrames: 30,
-          frameBudget: 52,
+          width: 560,
+          height: 350,
+          flowFrames: 26,
+          frameBudget: 44,
+          flatBackground: bgIsPhoto,
+          cycleHoldCap: 2.5,
         });
         if (blob) {
           imageData = await new Promise<string | null>((resolve) => {

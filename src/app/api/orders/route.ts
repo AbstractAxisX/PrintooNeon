@@ -33,8 +33,9 @@ const orderSchema = z.object({
   widthCm: z.number().int().min(20).max(250),
   backgroundId: z.string().trim().max(60).optional().nullable(),
   configJson: z.string().max(20_000).optional().nullable(),
-  /** ordered list of colorIds actually used, in order */
-  colors: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
+  /** ordered list of colorIds actually used, in order — the full palette
+   *  (23 colors) is allowed: per-letter designs can use every one of them */
+  colors: z.array(z.string().trim().min(1).max(40)).max(23).optional(),
   imageData: z
     .string()
     .startsWith("data:image/")

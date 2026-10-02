@@ -58,7 +58,7 @@ export const LINE_MODES: { id: LineMode; name: string; blurb: string }[] = [
   {
     id: "single",
     name: "Single-line",
-    blurb: "The text itself is the glowing tube — one solid line, no border around it.",
+    blurb: "One thin glowing tube runs through the letters — the tube itself is the text.",
   },
 ];
 
@@ -584,19 +584,146 @@ function strokeLine(
   ctx.strokeText(text, x, y);
 }
 
-/** single-line mode: paint the glyphs themselves (filled text — the shape
- *  of the whole shaped string, so Arabic letter joins stay intact) */
-function fillLine(
+/* ---------------- single-line tube geometry ---------------- */
+
+/**
+ * Approximate ink-stroke thickness of a font (ratio of font size), measured
+ * once per font with a tiny offscreen pixel scan. Single-line mode uses it
+ * to thin solid letters down to a believable neon-TUBE width: a filled
+ * letter of a bold font is far fatter than any real glass tube.
+ */
+const strokeRatioCache = new Map<string, number>();
+
+function fontStrokeRatio(fontId: string): number {
+  const hit = strokeRatioCache.get(fontId);
+  if (hit !== undefined) return hit;
+  let ratio = 0.075; // safe default when measuring is impossible
+  try {
+    if (typeof document !== "undefined") {
+      const font = getFont(fontId);
+      const S = 100;
+      const W = 340;
+      const H = 170;
+      const cv = document.createElement("canvas");
+      cv.width = W;
+      cv.height = H;
+      const c2 = cv.getContext("2d", { willReadFrequently: true });
+      if (c2) {
+        c2.font = fontCss(font, S);
+        c2.textBaseline = "middle";
+        c2.fillStyle = "#fff";
+        // probe glyph per script: "o" for Latin fonts, "م" for Arabic-script
+        c2.fillText(font.script === "arabic" ? "م" : "o", 24, H / 2);
+        const data = c2.getImageData(0, 0, W, H).data;
+        const runs: number[] = [];
+        for (let y = 0; y < H; y += 2) {
+          let run = 0;
+          for (let x = 0; x < W; x++) {
+            if (data[(y * W + x) * 4 + 3] > 110) run++;
+            else {
+              if (run > 1 && run < S * 0.55) runs.push(run);
+              run = 0;
+            }
+          }
+          if (run > 1 && run < S * 0.55) runs.push(run);
+        }
+        if (runs.length >= 6) {
+          runs.sort((a, b) => a - b);
+          ratio = Math.max(0.03, Math.min(0.2, runs[Math.floor(runs.length / 2)] / S));
+        }
+      }
+    }
+  } catch {
+    /* keep the default ratio */
+  }
+  strokeRatioCache.set(fontId, ratio);
+  return ratio;
+}
+
+export interface SingleLineGeom {
+  /** measured ink thickness of the font at this line's size (px) */
+  ink: number;
+  /** final tube width the letter strokes are thinned to */
+  body: number;
+  /** erosion (px, per side) that thins the glyph down to `body` */
+  erodeBody: number;
+  /** erosion for the white-hot core (inset from the tube edges) */
+  erodeCore: number;
+  /** erosion for the near-white filament running down the tube center */
+  erodeFilament: number;
+}
+
+/**
+ * Single-line tube geometry for one line: the letter body becomes a tube of
+ * about the same width as a double-line tube (thin!), never fatter than
+ * 42% of the ink thickness — then the exact double-line core/filament
+ * insets are applied inside it. Hairline fonts keep their natural width.
+ */
+function singleLineGeom(fontSize: number, tube: number, fontId: string): SingleLineGeom {
+  const ink = Math.max(1, fontStrokeRatio(fontId) * fontSize);
+  const body = Math.min(
+    ink, // never fatter than the actual letters
+    Math.max(tube * 1.05, Math.min(ink * 0.42, tube * 1.9))
+  );
+  return {
+    ink,
+    body,
+    erodeBody: Math.max(0, (ink - body) / 2),
+    erodeCore: Math.max(0, (ink - body) / 2) + body * 0.28,
+    erodeFilament: Math.max(0, (ink - body) / 2) + body * 0.42,
+  };
+}
+
+/**
+ * Draw `text` thinned by `erosion` px from every edge, tinted with `paint`.
+ * Erosion = destination-out contour stroke (a canvas "shrink"): the glyph
+ * keeps its exact shaped outline (Arabic joins intact) while every stroke
+ * becomes a thin rounded tube. The surviving mask is tinted via
+ * source-in, then blitted to the target ctx.
+ */
+function erodedText(
   ctx: CanvasRenderingContext2D,
+  cw: number,
+  ch: number,
+  dpr: number,
+  fontId: string,
   text: string,
   x: number,
   y: number,
-  style: LineStyle,
-  alpha: number
+  fs: number,
+  rtl: boolean,
+  erosion: number,
+  paint: LineStyle,
+  alpha: number,
+  key = "sl-mask"
 ): void {
+  const canvas = getScratch(key, cw, ch, dpr);
+  const sctx = scratchCtx(key, cw, ch, dpr);
+  if (!canvas || !sctx) return;
+  const font = getFont(fontId);
+  sctx.font = fontCss(font, fs);
+  sctx.direction = rtl ? "rtl" : "ltr";
+  sctx.textAlign = "left";
+  sctx.textBaseline = "middle";
+  sctx.fillStyle = "#fff";
+  sctx.fillText(text, x, y);
+  if (erosion > 0.05) {
+    sctx.globalCompositeOperation = "destination-out";
+    sctx.lineJoin = "round";
+    sctx.lineCap = "round";
+    sctx.lineWidth = erosion * 2;
+    sctx.strokeStyle = "#000";
+    sctx.strokeText(text, x, y);
+    sctx.globalCompositeOperation = "source-over";
+  }
+  // tint whatever survived with the paint (flat color or canvas gradient)
+  sctx.globalCompositeOperation = "source-in";
+  sctx.fillStyle = paint;
+  sctx.fillRect(0, 0, cw, ch);
+  sctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = alpha;
-  ctx.fillStyle = style;
-  ctx.fillText(text, x, y);
+  ctx.drawImage(canvas, 0, 0, cw, ch);
+  ctx.globalAlpha = 1;
 }
 
 /** group glyphs & colors per line once per frame */
@@ -653,9 +780,23 @@ function drawLitSign(
   frame: FrameColors,
   dark: boolean
 ): void {
-  const tubeRef = layout.line.reduce((m, l) => Math.max(m, l.tube), 4);
   const groups = buildLineGroups(nctx, layout, frame, mode);
   const font = getFont(fontId);
+
+  // per-line single-line tube geometry (erosion amounts etc.)
+  const geoms = groups.map((g) =>
+    singleLineGeom(g.l.fontSize, g.l.tube, fontId)
+  );
+  const anySingle = groups.some((g, i) => lineModeForLine(g.l.rtl, lineMode) === "single" && geoms[i].ink > 0);
+  // bloom reference width: the lit tube itself — for single-line that is the
+  // (thinned) letter body, slightly WIDER halos than the outline tube
+  const tubeRef = Math.max(
+    4,
+    groups.reduce((m, g, i) => {
+      const single = lineModeForLine(g.l.rtl, lineMode) === "single";
+      return Math.max(m, single ? geoms[i].body : g.l.tube);
+    }, 4)
+  );
 
   nctx.save();
   nctx.textAlign = "left";
@@ -663,7 +804,9 @@ function drawLitSign(
   nctx.lineJoin = "round";
   nctx.lineCap = "round";
 
-  /* ---- 1. light layer: bright saturated strokes on their own canvas ---- */
+  /* ---- 1. light layer: bright saturated shapes on their own canvas ----
+     single-line: the glowing "gas" — the letters eroded to just a touch
+     wider than the tube, so the light hugs the tube like real gas glow */
   const lctx = scratchCtx("light", cw, ch, dpr);
   if (lctx) {
     lctx.textAlign = "left";
@@ -671,18 +814,24 @@ function drawLitSign(
     lctx.lineJoin = "round";
     lctx.lineCap = "round";
     lctx.globalCompositeOperation = "lighter";
-    for (const g of groups) {
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi];
       if (!g.l.text) continue;
       lctx.font = fontCss(font, g.l.fontSize);
       lctx.direction = g.l.rtl ? "rtl" : "ltr";
       const single = lineModeForLine(g.l.rtl, lineMode) === "single";
+      const geom = geoms[gi];
+      const gasW = Math.min(geom.ink, geom.body * 1.8);
+      const erodeGas = Math.max(0, (geom.ink - gasW) / 2);
       if (g.paint) {
-        if (single) fillLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, 0.9);
+        if (single)
+          erodedText(lctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, erodeGas, g.paint.glow, 0.9, "sl-gas");
         else strokeLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, g.l.tube * 1.35, 0.9);
       } else if (g.perGlyph) {
         for (let i = 0; i < g.boxes.length; i++) {
           const gb = g.boxes[i];
-          if (single) fillLine(lctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].glow, 0.9);
+          if (single)
+            erodedText(lctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, erodeGas, g.perGlyph[i].glow, 0.9, "sl-gas");
           else strokeLine(lctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].glow, g.l.tube * 1.35, 0.9);
         }
       }
@@ -693,35 +842,41 @@ function drawLitSign(
     if (lightCanvas && supportsFilter()) {
       nctx.globalCompositeOperation = "lighter";
       const a = dark ? 1 : 0.55;
-      nctx.filter = `blur(${(tubeRef * 2.2).toFixed(1)}px)`;
-      nctx.globalAlpha = 0.8 * a;
+      // single-line signs get a lusher halo — that is where the neon FEEL lives
+      const m1 = anySingle ? 1.6 : 2.2;
+      const m2 = anySingle ? 4.5 : 6.0;
+      const m3 = anySingle ? 11 : 12;
+      nctx.filter = `blur(${(tubeRef * m1).toFixed(1)}px)`;
+      nctx.globalAlpha = (anySingle ? 0.85 : 0.8) * a;
       nctx.drawImage(lightCanvas, 0, 0, cw, ch);
-      nctx.filter = `blur(${(tubeRef * 6.0).toFixed(1)}px)`;
-      nctx.globalAlpha = 0.45 * a;
+      nctx.filter = `blur(${(tubeRef * m2).toFixed(1)}px)`;
+      nctx.globalAlpha = (anySingle ? 0.5 : 0.45) * a;
       nctx.drawImage(lightCanvas, 0, 0, cw, ch);
       if (dark) {
-        nctx.filter = `blur(${(tubeRef * 12).toFixed(1)}px)`;
-        nctx.globalAlpha = 0.2;
+        nctx.filter = `blur(${(tubeRef * m3).toFixed(1)}px)`;
+        nctx.globalAlpha = anySingle ? 0.26 : 0.2;
         nctx.drawImage(lightCanvas, 0, 0, cw, ch);
       }
       nctx.filter = "none";
       nctx.globalAlpha = 1;
       nctx.globalCompositeOperation = "source-over";
     } else {
-      // fallback: per-glyph shadowBlur glow (slower, visually close)
+      // fallback: shadowBlur glow around the shapes (visually close)
       nctx.globalCompositeOperation = "lighter";
-      for (const g of groups) {
+      for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
         if (!g.l.text) continue;
         nctx.font = fontCss(font, g.l.fontSize);
         nctx.direction = g.l.rtl ? "rtl" : "ltr";
         const single = lineModeForLine(g.l.rtl, lineMode) === "single";
+        const geom = geoms[gi];
         if (g.paint) {
           const glowCss = g.paint.glow as string;
           nctx.shadowColor = glowCss;
-          nctx.shadowBlur = g.l.tube * 6.5;
+          nctx.shadowBlur = single ? geom.body * 6.5 : g.l.tube * 6.5;
           if (single) {
-            fillLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, 0.35);
-            fillLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, 0.3);
+            erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, glowCss, 0.35, "sl-mask");
+            erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, glowCss, 0.3, "sl-mask");
           } else {
             strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.35);
             strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.3);
@@ -731,8 +886,9 @@ function drawLitSign(
             const gb = g.boxes[i];
             const glowCss = g.perGlyph[i].glow as string;
             nctx.shadowColor = glowCss;
-            nctx.shadowBlur = g.l.tube * 6.5;
-            if (single) fillLine(nctx, gb.ch, gb.x, g.l.y, glowCss, 0.4);
+            nctx.shadowBlur = single ? geom.body * 6.5 : g.l.tube * 6.5;
+            if (single)
+              erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, glowCss, 0.4, "sl-mask");
             else strokeLine(nctx, gb.ch, gb.x, g.l.y, glowCss, g.l.tube * 1.2, 0.4);
           }
         }
@@ -745,19 +901,19 @@ function drawLitSign(
   }
 
   /* ---- 3. glass tube body ----
-     single-line: a solid fill + a SAME-COLOR fattening stroke. The stroke is
-     invisible as a "border" — same opaque color, non-additive compositing:
-     it simply thickens the letter strokes a touch and merges seamlessly,
-     even where connected Arabic glyphs overlap. */
-  for (const g of groups) {
+     double-line: the outline stroke IS the tube.
+     single-line: the letters eroded down to a thin tube — exactly the same
+     width class as the double-line tube, never a fat filled letter. */
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
     const single = lineModeForLine(g.l.rtl, lineMode) === "single";
+    const geom = geoms[gi];
     if (g.paint) {
       if (single) {
-        fillLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, 1);
-        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube * 0.4, 1);
+        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, g.paint.tube, 1, "sl-mask");
       } else {
         strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube, 1);
       }
@@ -765,8 +921,7 @@ function drawLitSign(
       for (let i = 0; i < g.boxes.length; i++) {
         const gb = g.boxes[i];
         if (single) {
-          fillLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, 1);
-          strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, g.l.tube * 0.4, 1);
+          erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, g.perGlyph[i].tube, 1, "sl-mask");
         } else {
           strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, g.l.tube, 1);
         }
@@ -774,18 +929,22 @@ function drawLitSign(
     }
   }
 
-  /* ---- 4. hot core (additive) ----
-     single-line: one soft bright fill instead of core + filament strokes
-     (additive strokes would draw contour lines through joined glyphs). */
+  /* ---- 4. hot core (additive) — THE neon look ----
+     Exactly the double-line recipe applied to the single-line tube: a
+     whiter core inset inside the tube, then a near-white filament line
+     running down its center. This is what makes a tube read as lit neon. */
   nctx.globalCompositeOperation = "lighter";
-  for (const g of groups) {
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
     const single = lineModeForLine(g.l.rtl, lineMode) === "single";
+    const geom = geoms[gi];
     if (g.paint) {
       if (single) {
-        fillLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.core, 0.35);
+        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeCore, g.paint.core, 0.95, "sl-core");
+        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeFilament, g.paint.filament, 0.9, "sl-fil");
       } else {
         strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.core, g.l.tube * 0.45, 0.95);
         strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.filament, g.l.tube * 0.18, 0.9);
@@ -794,7 +953,8 @@ function drawLitSign(
       for (let i = 0; i < g.boxes.length; i++) {
         const gb = g.boxes[i];
         if (single) {
-          fillLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].core, 0.35);
+          erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeCore, g.perGlyph[i].core, 0.95, "sl-core");
+          erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeFilament, g.perGlyph[i].filament, 0.9, "sl-fil");
         } else {
           strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].core, g.l.tube * 0.45, 0.95);
           strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].filament, g.l.tube * 0.18, 0.9);
@@ -811,6 +971,9 @@ function drawLitSign(
 
 function drawOffSign(
   nctx: CanvasRenderingContext2D,
+  cw: number,
+  ch: number,
+  dpr: number,
   fontId: string,
   mode: ColorMode,
   lineMode: LineMode,
@@ -827,17 +990,18 @@ function drawOffSign(
   nctx.textBaseline = "middle";
   nctx.lineJoin = "round";
   nctx.lineCap = "round";
-  for (const g of groups) {
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
     const single = lineModeForLine(g.l.rtl, lineMode) === "single";
+    const geom = singleLineGeom(g.l.fontSize, g.l.tube, fontId);
     if (g.paint) {
       if (single) {
-        // pale unlit glass + a same-color touch of thickness + faint sheen
-        fillLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), 0.92);
-        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), g.l.tube * 0.35, 0.5);
-        fillLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, 0.22);
+        // thin unlit glass tube + faint colored sheen inside
+        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, rgbToCss(base), 0.92, "sl-mask");
+        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeCore, g.paint.tube, 0.28, "sl-core");
       } else {
         // pale unlit glass + faint colored sheen
         strokeLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), g.l.tube, 0.92);
@@ -848,8 +1012,7 @@ function drawOffSign(
         const gb = g.boxes[i];
         const glass = rgbToCss(lerpRgb(g.colors[i].tube, base, 0.55));
         if (single) {
-          fillLine(nctx, gb.ch, gb.x, g.l.y, glass, 0.92);
-          strokeLine(nctx, gb.ch, gb.x, g.l.y, glass, g.l.tube * 0.35, 0.5);
+          erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, glass, 0.92, "sl-mask");
         } else {
           strokeLine(nctx, gb.ch, gb.x, g.l.y, glass, g.l.tube, 0.92);
         }
@@ -967,7 +1130,7 @@ export function drawNeon(
     if (spec.on) {
       drawLitSign(neonCtx, cw, ch, dpr, spec.fontId, mode, getLineMode(spec.lineMode), layout, frame, dark);
     } else {
-      drawOffSign(neonCtx, spec.fontId, mode, getLineMode(spec.lineMode), layout, frame, dark);
+      drawOffSign(neonCtx, cw, ch, dpr, spec.fontId, mode, getLineMode(spec.lineMode), layout, frame, dark);
     }
 
     // 6. reflection below the sign (dark backgrounds, powered on)
@@ -1043,6 +1206,12 @@ export async function exportNeonGif(
     flowFrames?: number;
     /** hard cap on total frames — longer plans are uniformly subsampled */
     frameBudget?: number;
+    /** compact order previews: swap photo backgrounds for flat charcoal —
+     *  flat areas compress hugely, keeping the GIF well under payload caps */
+    flatBackground?: boolean;
+    /** cap the per-color hold in the preview so long holds (e.g. 10s) still
+     *  read as ANIMATING — the real timing travels with the order data */
+    cycleHoldCap?: number;
     onProgress?: (done: number, total: number) => void;
   } = {}
 ): Promise<Blob | null> {
@@ -1056,6 +1225,11 @@ export async function exportNeonGif(
   const bgDef = resolveBackground(spec.background ?? { id: "brick" });
   await ensureBackgroundLoaded(bgDef);
   await ensureFontsLoaded();
+
+  const drawSpec: NeonSpec =
+    options.flatBackground && bgDef.kind === "image"
+      ? { ...spec, background: { id: "solid-charcoal" } }
+      : spec;
 
   const cw = options.width ?? 900;
   const ch = options.height ?? 560;
@@ -1077,10 +1251,13 @@ export async function exportNeonGif(
   } else {
     // cycle: one long frame per hold + short frames across the fade
     const ids = (spec.cycleColors ?? []).filter(Boolean);
-    const hold = Math.max(0.2, spec.cycleHold ?? 1);
-    const fade = Math.max(0, spec.cycleFade ?? 0.8);
+    const hold = Math.min(
+      Math.max(0.2, spec.cycleHold ?? 1),
+      options.cycleHoldCap ?? Infinity
+    );
+    const fade = Math.min(Math.max(0, spec.cycleFade ?? 0.8), 2.5);
     const N = Math.max(1, ids.length);
-    const fadeSteps = fade > 0.01 ? 12 : 0;
+    const fadeSteps = fade > 0.01 ? 10 : 0;
     for (let i = 0; i < N; i++) {
       const t0 = i * (hold + fade);
       frames.push({ t: t0 + hold * 0.5, delayMs: Math.min(6000, Math.round(hold * 1000)) });
@@ -1110,7 +1287,7 @@ export async function exportNeonGif(
   const total = frames.length;
   for (let i = 0; i < total; i++) {
     const f = frames[i];
-    drawNeon(ctx, cw, ch, spec, { placeholder: "NEON", tSec: f.t, dpr: 1 });
+    drawNeon(ctx, cw, ch, drawSpec, { placeholder: "NEON", tSec: f.t, dpr: 1 });
     const { data } = ctx.getImageData(0, 0, cw, ch);
     const palette = quantize(data, 256, { format: "rgb565" });
     const index = applyPalette(data, palette, "rgb565");

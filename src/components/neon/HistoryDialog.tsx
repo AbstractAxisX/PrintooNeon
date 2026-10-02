@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { Copy, History, Trash2, Inbox } from "lucide-react";
 import { getHistory, clearHistory, type OrderHistoryEntry } from "@/lib/history";
 import { hasRTL } from "@/lib/neon";
-import { cn } from "@/lib/utils";
+import { cn, copyText } from "@/lib/utils";
 
 /**
  * "My orders" — the customer's own order history from localStorage,
@@ -43,10 +43,10 @@ function HistoryList({ onOrdersChanged }: { onOrdersChanged?: () => void }) {
   const [orders, setOrders] = useState<OrderHistoryEntry[]>(() => getHistory());
 
   function copyCode(code: string) {
-    navigator.clipboard
-      .writeText(code)
-      .then(() => toast.success("Order code copied."))
-      .catch(() => toast.error("Could not copy."));
+    copyText(code).then((ok) => {
+      if (ok) toast.success("Order code copied.");
+      else toast.error("Could not copy — select the code and copy it manually.");
+    });
   }
 
   function handleClear() {
@@ -94,7 +94,7 @@ function HistoryList({ onOrdersChanged }: { onOrdersChanged?: () => void }) {
                       className="h-14 w-20 shrink-0 rounded-lg border object-cover"
                     />
                   ) : (
-                    <div className="grid h-14 w-20 shrink-0 place-items-center rounded-lg border bg-muted/50 text-[10px] text-muted-foreground">
+                    <div className="grid h-14 w-20 shrink-0 place-items-center rounded-lg border bg-muted/50 text-[11px] text-muted-foreground">
                       design
                     </div>
                   )}

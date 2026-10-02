@@ -1,5 +1,6 @@
 import { Designer } from "@/components/neon/Designer";
 import { Gallery } from "@/components/site/Gallery";
+import { Footer } from "@/components/site/Footer";
 import { ThemeFab } from "@/components/site/ThemeFab";
 
 export default function Home() {
@@ -10,6 +11,7 @@ export default function Home() {
         <Designer />
         <Gallery />
       </main>
+      <Footer />
     </div>
   );
 }

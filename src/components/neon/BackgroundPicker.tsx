@@ -45,7 +45,7 @@ export function BackgroundPicker({
             >
               {/* wall photo thumbnails are plain <img> on purpose (canvas-adjacent UI) */}
               <img src={b.src} alt={`${b.name} wall background`} className="h-full w-full object-cover" />
-              <span className="absolute inset-x-0 bottom-0 bg-black/45 py-0.5 text-center text-[10px] font-bold text-white backdrop-blur-sm">
+              <span className="absolute inset-x-0 bottom-0 bg-black/45 py-0.5 text-center text-[11px] font-bold text-white backdrop-blur-sm">
                 {b.name}
               </span>
             </button>
@@ -112,7 +112,7 @@ export function BackgroundPicker({
         <ImageIcon className="h-3.5 w-3.5 shrink-0" />
         Current background: {activeDef.name}
         {activeDef.kind === "solid" && (
-          <span className="font-mono text-[10.5px] text-muted-foreground/80">{activeDef.color}</span>
+          <span className="font-mono text-[11px] text-muted-foreground/80">{activeDef.color}</span>
         )}
       </p>
     </div>

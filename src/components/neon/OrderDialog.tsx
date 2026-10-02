@@ -42,6 +42,7 @@ import {
   type NeonSpec,
 } from "@/lib/neon";
 import { addOrder } from "@/lib/history";
+import { copyText } from "@/lib/utils";
 
 interface OrderDialogProps {
   open: boolean;
@@ -259,10 +260,14 @@ export function OrderDialog({
 
   function handleCopyCode() {
     if (!success) return;
-    navigator.clipboard.writeText(success.code).then(() => {
-      setCopied(true);
-      toast.success("Order code copied.");
-      setTimeout(() => setCopied(false), 2000);
+    copyText(success.code).then((ok) => {
+      if (ok) {
+        setCopied(true);
+        toast.success("Order code copied.");
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        toast.error("Could not copy — select the code and copy it manually.");
+      }
     });
   }
 

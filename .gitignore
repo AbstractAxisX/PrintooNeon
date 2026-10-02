@@ -62,3 +62,4 @@ server.log
 /mini-services/
 /upload/
 agent-ctx/
+e2e/

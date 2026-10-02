@@ -135,7 +135,7 @@ export function FontAccordion({ value, onChange, hintScript }: FontAccordionProp
               >
                 <Languages className="h-3.5 w-3.5 opacity-70" />
                 {t.label}
-                <span className="text-[10px] font-normal opacity-60">{t.count}</span>
+                <span className="text-[11px] font-normal opacity-60">{t.count}</span>
               </button>
             ))}
           </div>
@@ -241,7 +241,7 @@ function FontOption({
         {sample}
       </span>
       <span
-        className="mt-1 w-full truncate text-center text-[10px] leading-tight text-muted-foreground"
+        className="mt-1 w-full truncate text-center text-[11px] leading-tight text-muted-foreground"
         dir="auto"
       >
         {font.name}

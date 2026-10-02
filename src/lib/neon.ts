@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------
-   Real neon render engine v3 — Canvas 2D
+   Real neon render engine v4 — Canvas 2D
 
    Color modes:
    - solid    : one steady color
@@ -14,6 +14,17 @@
    solid). Bloom = additive blurred copies of the lit tubes via
    ctx.filter, with a per-glyph shadowBlur fallback for browsers
    without ctx.filter.
+
+   Single-line tubes (v4): the letters themselves are thinned down to
+   a real glass-tube width with a MEASURED, safety-clamped erosion —
+   the actual typed text is pixel-scanned (thinnest + median stroke)
+   so high-contrast fonts (calligraphy hairlines, Naskh joins, serif
+   stems) can never be over-eroded into "eaten" letters again. The
+   white-hot core and filament are blurred copies of the tube mask
+   CLIPPED to the tube (blur ∩ mask): they mathematically cannot
+   contain holes, so no bite marks, no missing chunks. All masks are
+   cached per (font, text, size, erosion) — animated modes only
+   re-tint, never re-rasterize.
 ------------------------------------------------------------------- */
 
 export { NEON_COLORS, getColor, mixHex, withAlpha, isDarkHex } from "./colors";
@@ -37,7 +48,7 @@ import {
   smoothstep,
   type RGB,
 } from "./colors";
-import { getFont, fontCss, ensureFontsLoaded, hasArabicScript } from "./fonts";
+import { getFont, fontCss, ensureFontsLoaded, hasArabicScript, fontGeneration } from "./fonts";
 import { resolveBackground, drawBackground, ensureBackgroundLoaded } from "./backgrounds";
 import type { BackgroundSpec } from "./backgrounds";
 
@@ -588,9 +599,10 @@ function strokeLine(
 
 /**
  * Approximate ink-stroke thickness of a font (ratio of font size), measured
- * once per font with a tiny offscreen pixel scan. Single-line mode uses it
- * to thin solid letters down to a believable neon-TUBE width: a filled
- * letter of a bold font is far fatter than any real glass tube.
+ * once per font with a tiny offscreen pixel scan. Used only as a FALLBACK —
+ * measureInkStats() below scans the actual typed text, which is what the
+ * erosion clamp really needs (the old probe-glyph median was blind to
+ * hairlines and caused the "eaten text" bug in high-contrast fonts).
  */
 const strokeRatioCache = new Map<string, number>();
 
@@ -640,90 +652,453 @@ function fontStrokeRatio(fontId: string): number {
   return ratio;
 }
 
+/* ---------------- per-text ink measurement ---------------- */
+
+interface InkStats {
+  /** thinnest measured stroke (P25 of runs ≥ 2px), ratio of font size */
+  thin: number;
+  /** median stroke, ratio of font size */
+  med: number;
+  /** largest erosion (ratio of font size) that PROVABLY never splits the
+   *  rendered text into more pieces — measured empirically by binary
+   *  search. This is the real safety net: cursive letter-joins and Naskh
+   *  connections are 1.5–3px thin (far below any percentile), T-junctions
+   *  break ~25% earlier than flat strokes — only counting actual pieces
+   *  catches all of them. */
+  maxSafe: number;
+}
+
+const inkStatsCache = new Map<string, InkStats>();
+const inkProbe = { canvas: null as HTMLCanvasElement | null, ctx: null as CanvasRenderingContext2D | null };
+let seenBuf = new Uint8Array(0);
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const i = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * p)));
+  return sorted[i];
+}
+
+/** count connected ink pieces (alpha > 120, area > 12 px) */
+function countInkPieces(data: Uint8ClampedArray, w: number, h: number): number {
+  if (seenBuf.length < w * h) seenBuf = new Uint8Array(w * h);
+  seenBuf.fill(0, 0, w * h);
+  const stack = new Int32Array(w * h);
+  let comps = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (seenBuf[i] || data[i * 4 + 3] <= 120) continue;
+    let sp = 0;
+    stack[sp++] = i;
+    seenBuf[i] = 1;
+    let size = 0;
+    while (sp > 0) {
+      const j = stack[--sp];
+      size++;
+      const jx = j % w;
+      const jy = (j / w) | 0;
+      let k: number;
+      if (jx > 0 && !seenBuf[(k = j - 1)] && data[k * 4 + 3] > 120) {
+        seenBuf[k] = 1;
+        stack[sp++] = k;
+      }
+      if (jx < w - 1 && !seenBuf[(k = j + 1)] && data[k * 4 + 3] > 120) {
+        seenBuf[k] = 1;
+        stack[sp++] = k;
+      }
+      if (jy > 0 && !seenBuf[(k = j - w)] && data[k * 4 + 3] > 120) {
+        seenBuf[k] = 1;
+        stack[sp++] = k;
+      }
+      if (jy < h - 1 && !seenBuf[(k = j + w)] && data[k * 4 + 3] > 120) {
+        seenBuf[k] = 1;
+        stack[sp++] = k;
+      }
+    }
+    if (size > 12) comps++;
+  }
+  return comps;
+}
+
+/** render the probe text at 60px with optional erosion (same technique as
+ *  the real mask builder) and return the pixels */
+function renderInkProbe(
+  fontId: string,
+  text: string,
+  rtl: boolean,
+  erode: number,
+  w: number,
+  h: number
+): Uint8ClampedArray | null {
+  const ctx = inkProbe.ctx;
+  if (!ctx) return null;
+  const font = getFont(fontId);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = fontCss(font, 60);
+  ctx.direction = rtl ? "rtl" : "ltr";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.fillStyle = "#fff";
+  ctx.fillText(text, 6, h / 2);
+  if (erode > 0.05) {
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.lineWidth = erode * 2;
+    ctx.strokeStyle = "#000";
+    ctx.strokeText(text, 6, h / 2);
+    ctx.globalCompositeOperation = "source-over";
+  }
+  return ctx.getImageData(0, 0, w, h).data;
+}
+
+/**
+ * Measure the ACTUAL text once at a small canonical size:
+ *  - stroke-thickness stats (P25 thin / P50 median, runs ≥ 2px),
+ *  - and the empirical MAX SAFE EROSION: the largest erosion that keeps
+ *    the rendered piece count identical (binary search). Cached per
+ *  (font generation, font, text) — runs only when the text changes,
+ *  never per animation frame.
+ */
+function measureInkStats(fontId: string, text: string): InkStats {
+  const key = `${fontGeneration()}|${fontId}|${text}`;
+  const hit = inkStatsCache.get(key);
+  if (hit) return hit;
+  let thin = 0;
+  let med = 0;
+  let maxSafe = 0;
+  try {
+    if (typeof document !== "undefined" && text.trim().length > 0) {
+      if (!inkProbe.canvas) {
+        inkProbe.canvas = document.createElement("canvas");
+        inkProbe.ctx = inkProbe.canvas.getContext("2d", { willReadFrequently: true });
+      }
+      const mctx = inkProbe.ctx;
+      if (mctx) {
+        const S = 60;
+        mctx.setTransform(1, 0, 0, 1, 0, 0);
+        mctx.font = fontCss(getFont(fontId), S);
+        const adv = mctx.measureText(text).width;
+        const w = Math.min(4000, Math.ceil(adv) + 12);
+        const h = Math.ceil(S * 1.7);
+        if (w > 10 && h > 10 && inkProbe.canvas) {
+          inkProbe.canvas.width = w;
+          inkProbe.canvas.height = h;
+          const rtl = hasArabicScript(text);
+          const base = renderInkProbe(fontId, text, rtl, 0, w, h);
+          if (base) {
+            const runs: number[] = [];
+            const maxRun = S * 0.55;
+            const push = (run: number) => {
+              if (run >= 2 && run <= maxRun) runs.push(run);
+            };
+            for (let y = 0; y < h; y++) {
+              let run = 0;
+              for (let x = 0; x <= w; x++) {
+                const on = x < w && base[(y * w + x) * 4 + 3] > 110;
+                if (on) run++;
+                else {
+                  push(run);
+                  run = 0;
+                }
+              }
+              push(run);
+            }
+            for (let x = 0; x < w; x++) {
+              let run = 0;
+              for (let y = 0; y <= h; y++) {
+                const on = y < h && base[(y * w + x) * 4 + 3] > 110;
+                if (on) run++;
+                else {
+                  push(run);
+                  run = 0;
+                }
+              }
+              push(run);
+            }
+            runs.sort((a, b) => a - b);
+            if (runs.length >= 8) {
+              thin = Math.max(0.012, percentile(runs, 0.25) / S);
+              med = Math.max(0.015, percentile(runs, 0.5) / S);
+            }
+            // binary-search the largest erosion preserving the piece count
+            const basePieces = countInkPieces(base, w, h);
+            let lo = 0;
+            let hi = 24;
+            while (hi - lo > 0.5) {
+              const mid = (lo + hi) / 2;
+              const d = renderInkProbe(fontId, text, rtl, mid, w, h);
+              if (d && countInkPieces(d, w, h) === basePieces) lo = mid;
+              else hi = mid;
+            }
+            maxSafe = Math.max(0, lo / S);
+          }
+        }
+      }
+    }
+  } catch {
+    /* fall back to the probe ratio below */
+  }
+  if (thin <= 0 || med <= 0) {
+    const probe = fontStrokeRatio(fontId);
+    thin = probe * 0.5;
+    med = probe;
+  }
+  if (maxSafe <= 0) maxSafe = med * 0.2; // never measured → very conservative
+  const st: InkStats = { thin, med, maxSafe };
+  inkStatsCache.set(key, st);
+  if (inkStatsCache.size > 64) {
+    const oldest = inkStatsCache.keys().next().value;
+    if (oldest !== undefined) inkStatsCache.delete(oldest);
+  }
+  return st;
+}
+
 export interface SingleLineGeom {
-  /** measured ink thickness of the font at this line's size (px) */
+  /** median ink thickness (px at this line's size) */
   ink: number;
+  /** thinnest ink stroke in THIS text (px) — erosion safety reference */
+  thin: number;
   /** final tube width the letter strokes are thinned to */
   body: number;
-  /** erosion (px, per side) that thins the glyph down to `body` */
+  /** erosion (px, per side) that thins the glyph down to `body`.
+   *  Hard-clamped to 45% of the thinnest measured stroke — eroding more
+   *  would erase thin strokes entirely (the "eaten / bitten text" bug). */
   erodeBody: number;
-  /** erosion for the white-hot core (inset from the tube edges) */
-  erodeCore: number;
-  /** erosion for the near-white filament running down the tube center */
-  erodeFilament: number;
+  /** erosion for the glow layer (wider than the tube) */
+  erodeGas: number;
+  /** blur sigma (px) of the white-hot core overlay */
+  coreSigma: number;
+  /** blur sigma (px) of the near-white filament overlay */
+  filSigma: number;
 }
 
 /**
  * Single-line tube geometry for one line: the letter body becomes a tube of
- * about the same width as a double-line tube (thin!), never fatter than
- * 42% of the ink thickness — then the exact double-line core/filament
- * insets are applied inside it. Hairline fonts keep their natural width.
+ * about the same width class as a double-line tube (thin!), never fatter
+ * than 42% of the median ink. The erosion is bounded by THREE independent
+ * caps, so no letter, join, dot or hairline can ever be erased:
+ *  1. the piece-count calibrated cap (empirical, per actual text),
+ *  2. 45% of the thinnest measured stroke,
+ *  3. hairline fonts simply keep their natural width (ink < target).
  */
-function singleLineGeom(fontSize: number, tube: number, fontId: string): SingleLineGeom {
-  const ink = Math.max(1, fontStrokeRatio(fontId) * fontSize);
-  const body = Math.min(
+function singleLineGeom(fontSize: number, tube: number, fontId: string, text: string): SingleLineGeom {
+  const st = measureInkStats(fontId, text);
+  const ink = Math.max(1, st.med * fontSize);
+  const thin = Math.max(0.75, st.thin * fontSize);
+  const target = Math.min(
     ink, // never fatter than the actual letters
     Math.max(tube * 1.05, Math.min(ink * 0.42, tube * 1.9))
   );
+  const capStat = 0.45 * thin;
+  const capPiece = 0.85 * st.maxSafe * fontSize;
+  const erodeBody = Math.min(Math.max(0, (ink - target) / 2), capStat, capPiece);
+  const body = Math.max(1, ink - erodeBody * 2);
+  const gasW = Math.min(ink, body * 1.8);
+  const erodeGas = Math.min(Math.max(0, (ink - gasW) / 2), capStat, capPiece);
   return {
     ink,
+    thin,
     body,
-    erodeBody: Math.max(0, (ink - body) / 2),
-    erodeCore: Math.max(0, (ink - body) / 2) + body * 0.28,
-    erodeFilament: Math.max(0, (ink - body) / 2) + body * 0.42,
+    erodeBody,
+    erodeGas,
+    coreSigma: Math.max(0.6, body * 0.3),
+    filSigma: Math.max(0.35, body * 0.13),
   };
 }
 
+/* ---------------- cached single-line masks ---------------- */
+
+interface SlMask {
+  canvas: HTMLCanvasElement;
+  /** css-space width/height of the mask */
+  w: number;
+  h: number;
+  /** css-space anchor of the text (baseline-middle point) inside the mask */
+  ax: number;
+  ay: number;
+}
+
+interface SlSet {
+  body: SlMask;
+  gas: SlMask;
+  core: SlMask;
+  fil: SlMask;
+  /** device pixels held by this entry (for the cache budget) */
+  pixels: number;
+}
+
+const slSetCache = new Map<string, SlSet>();
+let slSetPixels = 0;
+const SL_SET_BUDGET = 12_000_000; // device px (~48 MB) — generous but bounded
+const SL_SET_MAX = 96;
+let slMeasureCtx: CanvasRenderingContext2D | null = null;
+
 /**
- * Draw `text` thinned by `erosion` px from every edge, tinted with `paint`.
- * Erosion = destination-out contour stroke (a canvas "shrink"): the glyph
- * keeps its exact shaped outline (Arabic joins intact) while every stroke
- * becomes a thin rounded tube. The surviving mask is tinted via
- * source-in, then blitted to the target ctx.
+ * Render `text` white on a tight-bbox canvas, then erode it by `erode` px
+ * from every edge (destination-out contour stroke — a canvas "shrink").
+ * The glyph keeps its exact shaped outline (Arabic joins stay intact).
  */
-function erodedText(
+function buildErodedMask(
+  fontId: string,
+  text: string,
+  fs: number,
+  rtl: boolean,
+  erode: number,
+  dpr: number
+): SlMask | null {
+  if (!slMeasureCtx) {
+    slMeasureCtx = document.createElement("canvas").getContext("2d");
+  }
+  const mctx = slMeasureCtx;
+  if (!mctx) return null;
+  const font = getFont(fontId);
+  mctx.font = fontCss(font, fs);
+  mctx.direction = rtl ? "rtl" : "ltr";
+  mctx.textAlign = "left";
+  mctx.textBaseline = "middle";
+  const m = mctx.measureText(text);
+  const bbl = Number.isFinite(m.actualBoundingBoxLeft) ? m.actualBoundingBoxLeft : 0;
+  const bbr = Number.isFinite(m.actualBoundingBoxRight) ? m.actualBoundingBoxRight : m.width;
+  const bba = Number.isFinite(m.actualBoundingBoxAscent) ? m.actualBoundingBoxAscent : fs * 0.78;
+  const bbd = Number.isFinite(m.actualBoundingBoxDescent) ? m.actualBoundingBoxDescent : fs * 0.32;
+  const pad = 6;
+  const w = Math.ceil(bbl + bbr + pad * 2);
+  const h = Math.ceil(bba + bbd + pad * 2);
+  if (w < 2 || h < 2 || w > 8000 || h > 4000) return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(2, Math.round(w * dpr));
+  canvas.height = Math.max(2, Math.round(h * dpr));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.font = fontCss(font, fs);
+  ctx.direction = rtl ? "rtl" : "ltr";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const ax = bbl + pad;
+  const ay = bba + pad;
+  ctx.fillStyle = "#fff";
+  ctx.fillText(text, ax, ay);
+  if (erode > 0.05) {
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.lineWidth = erode * 2;
+    ctx.strokeStyle = "#000";
+    ctx.strokeText(text, ax, ay);
+    ctx.globalCompositeOperation = "source-over";
+  }
+  return { canvas, w, h, ax, ay };
+}
+
+/**
+ * A blurred copy of `base` CLIPPED to `base` (blur ∩ mask). Because a blur
+ * can never create holes and the intersection keeps every pixel inside the
+ * tube, the core/filament overlays built this way can NEVER look bitten or
+ * broken — fat strokes get a white-hot center with colored rims, thin
+ * strokes simply glow hotter. Exactly the double-line recipe's feel,
+ * without its fragility.
+ */
+function softMask(base: SlMask, sigma: number, dpr: number): SlMask | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = base.canvas.width;
+  canvas.height = base.canvas.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  if (supportsFilter()) {
+    ctx.filter = `blur(${(sigma * dpr).toFixed(2)}px)`;
+    ctx.drawImage(base.canvas, 0, 0);
+    ctx.filter = "none";
+  } else {
+    // shadow-blur fallback: draw the mask off-canvas so only its blurred
+    // shadow lands on the canvas (offset trick)
+    const off = canvas.height + 16;
+    ctx.save();
+    ctx.shadowColor = "#fff";
+    ctx.shadowBlur = sigma * dpr * 2;
+    ctx.shadowOffsetY = off;
+    ctx.drawImage(base.canvas, 0, -off);
+    ctx.restore();
+  }
+  // clip the blurred copy to the tube shape
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.drawImage(base.canvas, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+  return { canvas, w: base.w, h: base.h, ax: base.ax, ay: base.ay };
+}
+
+/** full mask set for one piece of text — cached, position-independent */
+function getSlSet(
+  fontId: string,
+  text: string,
+  fs: number,
+  rtl: boolean,
+  geom: SingleLineGeom,
+  dpr: number
+): SlSet | null {
+  if (!text || !text.trim()) return null;
+  const fsKey = (Math.round(fs * 2) / 2).toFixed(1);
+  const key = `${fontGeneration()}|${fontId}|${fsKey}|${dpr}|${geom.erodeBody.toFixed(2)}|${geom.erodeGas.toFixed(2)}|${text}`;
+  const hit = slSetCache.get(key);
+  if (hit) return hit;
+
+  const body = buildErodedMask(fontId, text, fs, rtl, geom.erodeBody, dpr);
+  if (!body) return null;
+  const gas =
+    Math.abs(geom.erodeGas - geom.erodeBody) < 0.05
+      ? body
+      : buildErodedMask(fontId, text, fs, rtl, geom.erodeGas, dpr) ?? body;
+  const core = softMask(body, geom.coreSigma, dpr) ?? body;
+  const fil = softMask(body, geom.filSigma, dpr) ?? body;
+
+  const canvases = new Set([body.canvas, gas.canvas, core.canvas, fil.canvas]);
+  let pixels = 0;
+  canvases.forEach((c) => {
+    pixels += c.width * c.height;
+  });
+  const set: SlSet = { body, gas, core, fil, pixels };
+  slSetCache.set(key, set);
+  slSetPixels += pixels;
+  while (slSetCache.size > 1 && (slSetPixels > SL_SET_BUDGET || slSetCache.size > SL_SET_MAX)) {
+    const oldest = slSetCache.keys().next().value;
+    if (oldest === undefined || oldest === key) break;
+    const drop = slSetCache.get(oldest);
+    slSetCache.delete(oldest);
+    if (drop) slSetPixels -= drop.pixels;
+  }
+  return set;
+}
+
+/** tint a cached mask with a paint (flat color or gradient) and blit it */
+function blitSlMask(
   ctx: CanvasRenderingContext2D,
   cw: number,
   ch: number,
   dpr: number,
-  fontId: string,
-  text: string,
+  mask: SlMask,
   x: number,
   y: number,
-  fs: number,
-  rtl: boolean,
-  erosion: number,
   paint: LineStyle,
   alpha: number,
-  key = "sl-mask"
+  additive: boolean
 ): void {
-  const canvas = getScratch(key, cw, ch, dpr);
-  const sctx = scratchCtx(key, cw, ch, dpr);
-  if (!canvas || !sctx) return;
-  const font = getFont(fontId);
-  sctx.font = fontCss(font, fs);
-  sctx.direction = rtl ? "rtl" : "ltr";
-  sctx.textAlign = "left";
-  sctx.textBaseline = "middle";
-  sctx.fillStyle = "#fff";
-  sctx.fillText(text, x, y);
-  if (erosion > 0.05) {
-    sctx.globalCompositeOperation = "destination-out";
-    sctx.lineJoin = "round";
-    sctx.lineCap = "round";
-    sctx.lineWidth = erosion * 2;
-    sctx.strokeStyle = "#000";
-    sctx.strokeText(text, x, y);
-    sctx.globalCompositeOperation = "source-over";
-  }
-  // tint whatever survived with the paint (flat color or canvas gradient)
-  sctx.globalCompositeOperation = "source-in";
-  sctx.fillStyle = paint;
-  sctx.fillRect(0, 0, cw, ch);
-  sctx.globalCompositeOperation = "source-over";
+  const t = scratchCtx("sl-tint", cw, ch, dpr);
+  if (!t) return;
+  // snap the cached mask to the device grid so it stays pixel-crisp
+  const dx = Math.round((x - mask.ax) * dpr) / dpr;
+  const dy = Math.round((y - mask.ay) * dpr) / dpr;
+  t.drawImage(mask.canvas, dx, dy, mask.w, mask.h);
+  t.globalCompositeOperation = "source-in";
+  t.fillStyle = paint;
+  t.fillRect(0, 0, cw, ch);
+  t.globalCompositeOperation = "source-over";
+  const prevOp = ctx.globalCompositeOperation;
+  ctx.globalCompositeOperation = additive ? "lighter" : "source-over";
   ctx.globalAlpha = alpha;
-  ctx.drawImage(canvas, 0, 0, cw, ch);
+  ctx.drawImage(t.canvas, 0, 0, cw, ch);
   ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = prevOp;
 }
 
 /** group glyphs & colors per line once per frame */
@@ -783,9 +1158,9 @@ function drawLitSign(
   const groups = buildLineGroups(nctx, layout, frame, mode);
   const font = getFont(fontId);
 
-  // per-line single-line tube geometry (erosion amounts etc.)
+  // per-line single-line tube geometry (measured, safety-clamped erosion)
   const geoms = groups.map((g) =>
-    singleLineGeom(g.l.fontSize, g.l.tube, fontId)
+    singleLineGeom(g.l.fontSize, g.l.tube, fontId, g.l.text)
   );
   const anySingle = groups.some((g, i) => lineModeForLine(g.l.rtl, lineMode) === "single" && geoms[i].ink > 0);
   // bloom reference width: the lit tube itself — for single-line that is the
@@ -813,7 +1188,6 @@ function drawLitSign(
     lctx.textBaseline = "middle";
     lctx.lineJoin = "round";
     lctx.lineCap = "round";
-    lctx.globalCompositeOperation = "lighter";
     for (let gi = 0; gi < groups.length; gi++) {
       const g = groups[gi];
       if (!g.l.text) continue;
@@ -821,18 +1195,47 @@ function drawLitSign(
       lctx.direction = g.l.rtl ? "rtl" : "ltr";
       const single = lineModeForLine(g.l.rtl, lineMode) === "single";
       const geom = geoms[gi];
-      const gasW = Math.min(geom.ink, geom.body * 1.8);
-      const erodeGas = Math.max(0, (geom.ink - gasW) / 2);
+      if (single) {
+        const set = getSlSet(fontId, g.l.text, g.l.fontSize, g.l.rtl, geom, dpr);
+        if (set) {
+          if (g.paint) {
+            blitSlMask(lctx, cw, ch, dpr, set.gas, g.l.startX, g.l.y, g.paint.glow, 0.9, true);
+          } else if (g.perGlyph) {
+            for (let i = 0; i < g.boxes.length; i++) {
+              const gb = g.boxes[i];
+              if (gb.ch.trim() === "") continue;
+              const gs = getSlSet(fontId, gb.ch, g.l.fontSize, g.l.rtl, geom, dpr);
+              if (gs) blitSlMask(lctx, cw, ch, dpr, gs.gas, gb.x, g.l.y, g.perGlyph[i].glow, 0.9, true);
+            }
+          }
+          continue;
+        }
+        // degenerate fallback: the un-eroded fill still glows correctly
+        lctx.globalCompositeOperation = "lighter";
+        if (g.paint) {
+          lctx.globalAlpha = 0.9;
+          lctx.fillStyle = g.paint.glow;
+          lctx.fillText(g.l.text, g.l.startX, g.l.y);
+          lctx.globalAlpha = 1;
+        } else if (g.perGlyph) {
+          for (let i = 0; i < g.boxes.length; i++) {
+            const gb = g.boxes[i];
+            if (gb.ch.trim() === "") continue;
+            lctx.globalAlpha = 0.9;
+            lctx.fillStyle = g.perGlyph[i].glow;
+            lctx.fillText(gb.ch, gb.x, g.l.y);
+            lctx.globalAlpha = 1;
+          }
+        }
+        continue;
+      }
+      lctx.globalCompositeOperation = "lighter";
       if (g.paint) {
-        if (single)
-          erodedText(lctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, erodeGas, g.paint.glow, 0.9, "sl-gas");
-        else strokeLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, g.l.tube * 1.35, 0.9);
+        strokeLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, g.l.tube * 1.35, 0.9);
       } else if (g.perGlyph) {
         for (let i = 0; i < g.boxes.length; i++) {
           const gb = g.boxes[i];
-          if (single)
-            erodedText(lctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, erodeGas, g.perGlyph[i].glow, 0.9, "sl-gas");
-          else strokeLine(lctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].glow, g.l.tube * 1.35, 0.9);
+          strokeLine(lctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].glow, g.l.tube * 1.35, 0.9);
         }
       }
     }
@@ -862,7 +1265,6 @@ function drawLitSign(
       nctx.globalCompositeOperation = "source-over";
     } else {
       // fallback: shadowBlur glow around the shapes (visually close)
-      nctx.globalCompositeOperation = "lighter";
       for (let gi = 0; gi < groups.length; gi++) {
         const g = groups[gi];
         if (!g.l.text) continue;
@@ -870,13 +1272,39 @@ function drawLitSign(
         nctx.direction = g.l.rtl ? "rtl" : "ltr";
         const single = lineModeForLine(g.l.rtl, lineMode) === "single";
         const geom = geoms[gi];
+        const set = single ? getSlSet(fontId, g.l.text, g.l.fontSize, g.l.rtl, geom, dpr) : null;
+        if (single && set) {
+          if (g.paint) {
+            const glowCss = g.paint.glow as string;
+            nctx.shadowColor = glowCss;
+            nctx.shadowBlur = geom.body * 6.5;
+            blitSlMask(nctx, cw, ch, dpr, set.gas, g.l.startX, g.l.y, glowCss, 0.35, true);
+            blitSlMask(nctx, cw, ch, dpr, set.gas, g.l.startX, g.l.y, glowCss, 0.3, true);
+          } else if (g.perGlyph) {
+            for (let i = 0; i < g.boxes.length; i++) {
+              const gb = g.boxes[i];
+              if (gb.ch.trim() === "") continue;
+              const glowCss = g.perGlyph[i].glow as string;
+              const gs = getSlSet(fontId, gb.ch, g.l.fontSize, g.l.rtl, geom, dpr);
+              nctx.shadowColor = glowCss;
+              nctx.shadowBlur = geom.body * 6.5;
+              if (gs) blitSlMask(nctx, cw, ch, dpr, gs.gas, gb.x, g.l.y, glowCss, 0.4, true);
+            }
+          }
+          continue;
+        }
         if (g.paint) {
           const glowCss = g.paint.glow as string;
           nctx.shadowColor = glowCss;
           nctx.shadowBlur = single ? geom.body * 6.5 : g.l.tube * 6.5;
           if (single) {
-            erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, glowCss, 0.35, "sl-mask");
-            erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, glowCss, 0.3, "sl-mask");
+            nctx.globalCompositeOperation = "lighter";
+            nctx.globalAlpha = 0.35;
+            nctx.fillStyle = glowCss;
+            nctx.fillText(g.l.text, g.l.startX, g.l.y);
+            nctx.globalAlpha = 0.3;
+            nctx.fillText(g.l.text, g.l.startX, g.l.y);
+            nctx.globalAlpha = 1;
           } else {
             strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.35);
             strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.3);
@@ -887,9 +1315,15 @@ function drawLitSign(
             const glowCss = g.perGlyph[i].glow as string;
             nctx.shadowColor = glowCss;
             nctx.shadowBlur = single ? geom.body * 6.5 : g.l.tube * 6.5;
-            if (single)
-              erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, glowCss, 0.4, "sl-mask");
-            else strokeLine(nctx, gb.ch, gb.x, g.l.y, glowCss, g.l.tube * 1.2, 0.4);
+            if (single) {
+              nctx.globalCompositeOperation = "lighter";
+              nctx.globalAlpha = 0.4;
+              nctx.fillStyle = glowCss;
+              nctx.fillText(gb.ch, gb.x, g.l.y);
+              nctx.globalAlpha = 1;
+            } else {
+              strokeLine(nctx, gb.ch, gb.x, g.l.y, glowCss, g.l.tube * 1.2, 0.4);
+            }
           }
         }
       }
@@ -911,9 +1345,26 @@ function drawLitSign(
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
     const single = lineModeForLine(g.l.rtl, lineMode) === "single";
     const geom = geoms[gi];
+    const set = single ? getSlSet(fontId, g.l.text, g.l.fontSize, g.l.rtl, geom, dpr) : null;
+    if (single && set) {
+      if (g.paint) {
+        blitSlMask(nctx, cw, ch, dpr, set.body, g.l.startX, g.l.y, g.paint.tube, 1, false);
+      } else if (g.perGlyph) {
+        for (let i = 0; i < g.boxes.length; i++) {
+          const gb = g.boxes[i];
+          if (gb.ch.trim() === "") continue;
+          const gs = getSlSet(fontId, gb.ch, g.l.fontSize, g.l.rtl, geom, dpr);
+          if (gs) blitSlMask(nctx, cw, ch, dpr, gs.body, gb.x, g.l.y, g.perGlyph[i].tube, 1, false);
+        }
+      }
+      continue;
+    }
     if (g.paint) {
       if (single) {
-        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, g.paint.tube, 1, "sl-mask");
+        // degenerate fallback: solid filled letters (never missing)
+        nctx.globalAlpha = 1;
+        nctx.fillStyle = g.paint.tube;
+        nctx.fillText(g.l.text, g.l.startX, g.l.y);
       } else {
         strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube, 1);
       }
@@ -921,7 +1372,9 @@ function drawLitSign(
       for (let i = 0; i < g.boxes.length; i++) {
         const gb = g.boxes[i];
         if (single) {
-          erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, g.perGlyph[i].tube, 1, "sl-mask");
+          nctx.globalAlpha = 1;
+          nctx.fillStyle = g.perGlyph[i].tube;
+          nctx.fillText(gb.ch, gb.x, g.l.y);
         } else {
           strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, g.l.tube, 1);
         }
@@ -930,10 +1383,11 @@ function drawLitSign(
   }
 
   /* ---- 4. hot core (additive) — THE neon look ----
-     Exactly the double-line recipe applied to the single-line tube: a
-     whiter core inset inside the tube, then a near-white filament line
-     running down its center. This is what makes a tube read as lit neon. */
-  nctx.globalCompositeOperation = "lighter";
+     double-line: a whiter core stroke inset inside the tube + a near-white
+     filament line down its center.
+     single-line: the same recipe built from blur∩mask overlays — a soft
+     white-hot center with colored rims, clipped to the tube so it can
+     never look bitten or broken, no matter how thin the letters get. */
   for (let gi = 0; gi < groups.length; gi++) {
     const g = groups[gi];
     if (!g.l.text) continue;
@@ -941,28 +1395,58 @@ function drawLitSign(
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
     const single = lineModeForLine(g.l.rtl, lineMode) === "single";
     const geom = geoms[gi];
+    const set = single ? getSlSet(fontId, g.l.text, g.l.fontSize, g.l.rtl, geom, dpr) : null;
+    if (single && set) {
+      if (g.paint) {
+        blitSlMask(nctx, cw, ch, dpr, set.core, g.l.startX, g.l.y, g.paint.core, 0.95, true);
+        blitSlMask(nctx, cw, ch, dpr, set.fil, g.l.startX, g.l.y, g.paint.filament, 0.9, true);
+      } else if (g.perGlyph) {
+        for (let i = 0; i < g.boxes.length; i++) {
+          const gb = g.boxes[i];
+          if (gb.ch.trim() === "") continue;
+          const gs = getSlSet(fontId, gb.ch, g.l.fontSize, g.l.rtl, geom, dpr);
+          if (gs) {
+            blitSlMask(nctx, cw, ch, dpr, gs.core, gb.x, g.l.y, g.perGlyph[i].core, 0.95, true);
+            blitSlMask(nctx, cw, ch, dpr, gs.fil, gb.x, g.l.y, g.perGlyph[i].filament, 0.9, true);
+          }
+        }
+      }
+      continue;
+    }
     if (g.paint) {
       if (single) {
-        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeCore, g.paint.core, 0.95, "sl-core");
-        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeFilament, g.paint.filament, 0.9, "sl-fil");
+        // degenerate fallback: one soft additive core fill
+        nctx.globalCompositeOperation = "lighter";
+        nctx.globalAlpha = 0.55;
+        nctx.fillStyle = g.paint.core;
+        nctx.fillText(g.l.text, g.l.startX, g.l.y);
+        nctx.globalAlpha = 1;
+        nctx.globalCompositeOperation = "source-over";
       } else {
+        nctx.globalCompositeOperation = "lighter";
         strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.core, g.l.tube * 0.45, 0.95);
         strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.filament, g.l.tube * 0.18, 0.9);
+        nctx.globalCompositeOperation = "source-over";
       }
     } else if (g.perGlyph) {
       for (let i = 0; i < g.boxes.length; i++) {
         const gb = g.boxes[i];
         if (single) {
-          erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeCore, g.perGlyph[i].core, 0.95, "sl-core");
-          erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeFilament, g.perGlyph[i].filament, 0.9, "sl-fil");
+          nctx.globalCompositeOperation = "lighter";
+          nctx.globalAlpha = 0.55;
+          nctx.fillStyle = g.perGlyph[i].core;
+          nctx.fillText(gb.ch, gb.x, g.l.y);
+          nctx.globalAlpha = 1;
+          nctx.globalCompositeOperation = "source-over";
         } else {
+          nctx.globalCompositeOperation = "lighter";
           strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].core, g.l.tube * 0.45, 0.95);
           strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].filament, g.l.tube * 0.18, 0.9);
+          nctx.globalCompositeOperation = "source-over";
         }
       }
     }
   }
-  nctx.globalCompositeOperation = "source-over";
   nctx.globalAlpha = 1;
   nctx.restore();
 }
@@ -996,12 +1480,34 @@ function drawOffSign(
     nctx.font = fontCss(font, g.l.fontSize);
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
     const single = lineModeForLine(g.l.rtl, lineMode) === "single";
-    const geom = singleLineGeom(g.l.fontSize, g.l.tube, fontId);
+    const geom = singleLineGeom(g.l.fontSize, g.l.tube, fontId, g.l.text);
+    const set = single ? getSlSet(fontId, g.l.text, g.l.fontSize, g.l.rtl, geom, dpr) : null;
+    if (single && set) {
+      if (g.paint) {
+        // thin unlit glass tube + faint colored sheen inside
+        blitSlMask(nctx, cw, ch, dpr, set.body, g.l.startX, g.l.y, rgbToCss(base), 0.92, false);
+        blitSlMask(nctx, cw, ch, dpr, set.core, g.l.startX, g.l.y, g.paint.tube, 0.28, false);
+      } else if (g.perGlyph) {
+        for (let i = 0; i < g.boxes.length; i++) {
+          const gb = g.boxes[i];
+          if (gb.ch.trim() === "") continue;
+          const glass = rgbToCss(lerpRgb(g.colors[i].tube, base, 0.55));
+          const gs = getSlSet(fontId, gb.ch, g.l.fontSize, g.l.rtl, geom, dpr);
+          if (gs) blitSlMask(nctx, cw, ch, dpr, gs.body, gb.x, g.l.y, glass, 0.92, false);
+        }
+      }
+      continue;
+    }
     if (g.paint) {
       if (single) {
-        // thin unlit glass tube + faint colored sheen inside
-        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, rgbToCss(base), 0.92, "sl-mask");
-        erodedText(nctx, cw, ch, dpr, fontId, g.l.text, g.l.startX, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeCore, g.paint.tube, 0.28, "sl-core");
+        // degenerate fallback: solid unlit letters
+        nctx.globalAlpha = 0.92;
+        nctx.fillStyle = rgbToCss(base);
+        nctx.fillText(g.l.text, g.l.startX, g.l.y);
+        nctx.globalAlpha = 0.28;
+        nctx.fillStyle = g.paint.tube;
+        nctx.fillText(g.l.text, g.l.startX, g.l.y);
+        nctx.globalAlpha = 1;
       } else {
         // pale unlit glass + faint colored sheen
         strokeLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), g.l.tube, 0.92);
@@ -1012,7 +1518,10 @@ function drawOffSign(
         const gb = g.boxes[i];
         const glass = rgbToCss(lerpRgb(g.colors[i].tube, base, 0.55));
         if (single) {
-          erodedText(nctx, cw, ch, dpr, fontId, gb.ch, gb.x, g.l.y, g.l.fontSize, g.l.rtl, geom.erodeBody, glass, 0.92, "sl-mask");
+          nctx.globalAlpha = 0.92;
+          nctx.fillStyle = glass;
+          nctx.fillText(gb.ch, gb.x, g.l.y);
+          nctx.globalAlpha = 1;
         } else {
           strokeLine(nctx, gb.ch, gb.x, g.l.y, glass, g.l.tube, 0.92);
         }
@@ -1063,15 +1572,16 @@ function drawReflection(
 ): void {
   const bandH = Math.min(ch * 0.16, 80);
   if (bandH <= 4) return;
-  const devW = Math.max(2, Math.round(cw * dpr));
-  const bandDev = Math.max(2, Math.round(bandH * dpr));
+  // cached scratch (this runs on EVERY animation frame on dark walls —
+  // allocating a fresh canvas per frame was pure GC churn)
+  const ref = getScratch("reflect", cw, bandH, dpr);
+  const rctx = scratchCtx("reflect", cw, bandH, dpr);
+  if (!ref || !rctx) return;
+  const devW = ref.width;
+  const bandDev = ref.height;
 
-  const ref = document.createElement("canvas");
-  ref.width = devW;
-  ref.height = bandDev;
-  const rctx = ref.getContext("2d");
-  if (!rctx) return;
-
+  // work in device pixels (identity transform)
+  rctx.setTransform(1, 0, 0, 1, 0, 0);
   const srcY = Math.max(0, Math.round((layout.bottom - bandH) * dpr));
   rctx.save();
   rctx.scale(1, -1);
@@ -1085,6 +1595,7 @@ function drawReflection(
   g.addColorStop(1, "rgba(0,0,0,0)");
   rctx.fillStyle = g;
   rctx.fillRect(0, 0, devW, bandDev);
+  rctx.globalCompositeOperation = "source-over";
 
   ctx.save();
   if (supportsFilter()) ctx.filter = `blur(${(2 * dpr).toFixed(1)}px)`;

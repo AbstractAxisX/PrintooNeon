@@ -104,12 +104,17 @@ export async function POST(req: NextRequest) {
     const color2 = d.colorId2 ? NEON_COLORS.find((c) => c.id === d.colorId2) : undefined;
     const bg = d.backgroundId ? BACKGROUNDS.find((b) => b.id === d.backgroundId) : undefined;
 
-    // unique short code with retries
+    // unique short code with retries — and a timestamp fallback that can
+    // never collide, so a pathological run of duplicates can't 500
     let code = generateCode();
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 40; i++) {
       const exists = await db.order.findUnique({ where: { code } });
       if (!exists) break;
       code = generateCode();
+    }
+    const stillTaken = await db.order.findUnique({ where: { code } });
+    if (stillTaken) {
+      code = `NE-${10000 + (Date.now() % 89000)}`;
     }
 
     const order = await db.order.create({

@@ -90,6 +90,17 @@ export function getFont(id: string): NeonFont {
   return NEON_FONTS.find((f) => f.id === id) ?? NEON_FONTS[0];
 }
 
+/* ------------------------------------------------------------------
+   Font generation counter — bumped every time fonts finish loading.
+   Render caches (ink measurements, single-line tube masks) embed it in
+   their keys so nothing measured with a fallback font stays cached.
+------------------------------------------------------------------- */
+let generation = 0;
+
+export function fontGeneration(): number {
+  return generation;
+}
+
 /** true when the string contains Arabic-script characters (Kurdish Sorani / Persian / Arabic) */
 export function hasArabicScript(s: string): boolean {
   return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
@@ -113,6 +124,9 @@ export async function ensureFontsLoaded(specs?: NeonFont[]): Promise<void> {
       fonts.map((f) => document.fonts.load(`${f.weight} 32px "${f.family}"`))
     );
     await document.fonts.ready;
+    // fonts may have become available — invalidate render caches keyed to
+    // the previous (fallback-font) generation
+    generation++;
   } catch {
     /* if a font fails we still draw with the fallback */
   }

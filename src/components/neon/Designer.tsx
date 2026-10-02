@@ -99,7 +99,7 @@ export function Designer() {
   const [miniVisible, setMiniVisible] = useState(false);
 
   // how many past orders does this customer have? (for the badge)
-  useEffect(() => {
+  const recountOrders = useCallback(() => {
     try {
       const raw = window.localStorage.getItem("printoo-neon-orders");
       const n = raw ? (JSON.parse(raw) as unknown[]).length : 0;
@@ -107,7 +107,11 @@ export function Designer() {
     } catch {
       /* ignore */
     }
-  }, [historyOpen]);
+  }, []);
+
+  useEffect(() => {
+    recountOrders();
+  }, [historyOpen, recountOrders]);
 
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -344,7 +348,7 @@ export function Designer() {
                 <History className="h-4 w-4" />
                 My orders
                 {orderCount > 0 && (
-                  <span className="ml-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10.5px] font-bold text-primary-foreground">
+                  <span className="ml-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-bold text-primary-foreground">
                     {orderCount}
                   </span>
                 )}
@@ -523,7 +527,7 @@ export function Designer() {
                     onValueChange={(v) => d.setFlowSpeed(v[0] ?? 1)}
                     aria-label="Flow speed"
                   />
-                  <div className="mt-1 flex justify-between text-[10.5px] text-muted-foreground">
+                  <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
                     <span>Calm</span>
                     <span>Fast RGB</span>
                   </div>
@@ -757,7 +761,7 @@ export function Designer() {
 
       {/* ---------- floating mini preview (mobile only) ---------- */}
       <AnimatePresence>
-        {miniVisible && mounted && !orderOpen && (
+        {miniVisible && mounted && !orderOpen && !historyOpen && (
           <motion.div
             initial={{ y: 90, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -775,7 +779,7 @@ export function Designer() {
               aria-label="Jump back to the live preview"
             >
               <NeonCanvas spec={spec} aspect={2.6} />
-              <span className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-[10.5px] font-bold text-muted-foreground shadow-sm">
+              <span className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-[11px] font-bold text-muted-foreground shadow-sm">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
@@ -793,16 +797,7 @@ export function Designer() {
           open={orderOpen}
           onOpenChange={(v) => {
             setOrderOpen(v);
-            if (!v) {
-              // refresh the My-orders badge after a successful order
-              try {
-                const raw = window.localStorage.getItem("printoo-neon-orders");
-                const n = raw ? (JSON.parse(raw) as unknown[]).length : 0;
-                if (Number.isFinite(n)) setOrderCount(n);
-              } catch {
-                /* ignore */
-              }
-            }
+            if (!v) recountOrders();
           }}
           spec={spec}
           text={text}
@@ -815,7 +810,7 @@ export function Designer() {
         <HistoryDialog
           open={historyOpen}
           onOpenChange={setHistoryOpen}
-          onOrdersChanged={() => setOrderCount(0)}
+          onOrdersChanged={recountOrders}
         />
       )}
     </section>

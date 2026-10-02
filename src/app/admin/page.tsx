@@ -551,7 +551,7 @@ function OrderDetailDialog({
               )
             )}
             {order.isGif && (
-              <span className="absolute right-2.5 top-2.5 rounded-md bg-black/55 px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-amber-300 backdrop-blur">
+              <span className="absolute right-2.5 top-2.5 rounded-md bg-black/55 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-300 backdrop-blur">
                 GIF · animated
               </span>
             )}
@@ -668,7 +668,7 @@ function OrderDetailDialog({
                 })}
               </div>
               {rtl && (
-                <p className="mt-1.5 text-[10.5px] text-muted-foreground">
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
                   Arabic-script letters join inside a word, so whole words share one tube color.
                 </p>
               )}
@@ -868,7 +868,7 @@ function StatusPill({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        "inline-flex rounded-md px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white",
+        "inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white",
         style
       )}
     >

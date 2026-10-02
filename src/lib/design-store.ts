@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { ColorMode, LineMode } from "@/lib/neon";
+import { hasRTL, textTokens, type ColorMode, type LineMode } from "@/lib/neon";
 
 export const MAX_LINES = 3;
 export const MAX_CHARS_PER_LINE = 30;
@@ -107,7 +107,23 @@ export const useDesign = create<DesignState>()(
     (set) => ({
       ...DEFAULT_DESIGN,
 
-      setText: (text) => set({ text }),
+      setText: (text) =>
+        set((s) => {
+          // keep the per-letter paint map aligned with the text: drop
+          // colors whose letter no longer exists, and clear everything
+          // when the script (Latin ↔ Arabic) flips — indices would point
+          // at the wrong units otherwise
+          const tokenCount = textTokens(text).length;
+          const scriptFlipped = hasRTL(s.text) !== hasRTL(text);
+          const next: Record<number, string> = {};
+          if (!scriptFlipped) {
+            for (const [k, v] of Object.entries(s.letterColors)) {
+              const i = Number(k);
+              if (Number.isFinite(i) && i >= 0 && i < tokenCount) next[i] = v;
+            }
+          }
+          return { text, letterColors: next };
+        }),
       setFont: (fontId) => set({ fontId }),
       setMode: (mode) =>
         set((s) => ({ mode, brushColorId: mode === "perLetter" ? s.colorId : s.brushColorId })),

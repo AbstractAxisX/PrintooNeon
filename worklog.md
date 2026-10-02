@@ -218,3 +218,39 @@ Stage Summary:
 - English and Kurdish fonts live in separate tabs; 8 Kurdish Sorani fonts with verified coverage.
 - Orders: image or GIF + size + mode + ordered colors; admin panel at /admin (password: PrintooNeon-KeGs04A78WnF — change via ADMIN_PASSWORD env in /etc/systemd/system/printoo.service); customers keep their order history + codes in localStorage.
 - LIVE: http://187.124.27.96:3100 (+ /admin)
+
+---
+Task ID: single-line-tube-admin-table
+Agent: main (Z.ai Code)
+Task: 1) Neon "line style": current signs are double-line (tube outline on both sides of the text). Add a selectable SINGLE-LINE mode where the text itself is the glowing tube. 2) Persian/Kurdish still broke — the tube outline stroke cuts between joined letters → force single-line for Arabic script. 3) Admin panel: orders as a TABLE, click a row to open the detail; admin can change the password inside the panel.
+
+Work Log:
+- Root cause of the remaining RTL bug: drawLitSign painted the neon entirely with strokeText (glyph outline strokes) + additive 'lighter' compositing — for connected Arabic glyphs the overlapping contour lines show as bright cuts/borders between joined letters (سـ/ـل). Shaping was already fixed (whole words); the tube STYLE itself was the culprit.
+- neon.ts: new LineMode ("double" outline | "single" filled). Single-line pipeline: light layer = fillText(glow); bloom unchanged; tube body = fillText(tube) + a SAME-COLOR fattening stroke (invisible as a border — same opaque color, non-additive → merges into one solid shape even where connected glyphs overlap); core = one soft additive fill (no contour strokes). Off-state fills likewise. lineModeForLine(rtl, spec): Arabic-script lines are ALWAYS "single" regardless of the stored preference. Exports: LINE_MODES, getLineMode, lineModeForLine, LineMode.
+- design-store: lineMode state + setter, persist v5 with migration (absent → "double").
+- Designer: "Tube style" control (after color-mode controls, before Background) with a live "Neon" demo glyph — outline via -webkit-text-stroke vs glow via text-shadow, tinted with the active neon color. When the text is Persian/Kurdish: Double-line is disabled (aria-disabled + tooltip) and Single-line shows selected, with an explainer line.
+- Orders: OrderDialog sends effective lineMode (hasRTL → "single"), adds it to configJson + a summary badge + localStorage history entry ("single-line"/"double-line" shown in My orders). API zod enum + Order.lineMode column (default "double"); rate limit 12 orders/h/IP; admin list + detail expose lineMode.
+- Admin auth: DB-backed AdminConfig row (salted sha256 hash, seeded from ADMIN_PASSWORD env or dev default on first use); login issues a token derived from the stored hash so a password change instantly invalidates other sessions. NEW POST /api/admin/password (token auth, current+next, min 6) returns the rotated token. isAdminRequest is now async — all admin routes updated. Login brute-force guard 10/10min.
+- Admin page rewritten: orders TABLE (code / placed / customer / phone / sign text / size / style / status pill / chevron), rows clickable + keyboard accessible → DETAIL DIALOG (design preview incl. animated GIF, tube style, numbered colors, note, status buttons, two-step delete). "Change password" dialog in the header (current/new/repeat, validation, token refresh in localStorage).
+- prisma: Order.lineMode + AdminConfig; local db push applied.
+- E2E (agent-browser + z-ai vision): Good Vibes default = hollow double-line ✓; Single-line toggle = solid glowing ✓; «سلام» = ONE connected word, no cuts/borders, forced single ✓; UI lock verified in DOM (double disabled + tooltip) ✓; Kurdish «ڕۆژ باش ژیان» Lalezar = fully connected, ڕ ژ ۆ ژی correct ✓; per-word painting multi-color with intact joins ✓; Flow mode single-line gradient fills ✓; order NE-3985 (lineMode "single" in payload + localStorage history) ✓; admin: login → table row "Per Letter · single" → click → detail dialog (Single-line (solid text), numbered colors, image) → status change → table pill updates ✓; password change → old 401 / new 200 → re-login ✓; mobile 375px clean ✓; no page errors; lint clean; tsc deltas vs base are pre-existing only.
+- Committed b61ca59, pushed, deployed via Actions (mode=deploy port=3100).
+
+Stage Summary:
+- Persian/Kurdish now render as real single-line neon text — joined letters can never be cut again (outline mode is impossible for Arabic script by design).
+- Latin signs: user-selectable Double-line (classic outline) or Single-line (solid glowing text) — stored per draft and sent with orders.
+- Admin panel: orders TABLE + row-click detail + in-panel password change (DB-backed, token rotation); order + login rate limits.
+
+---
+Task ID: single-line-tube-admin-table-deploy
+Agent: main (Z.ai Code)
+Task: Final deployment + verification of the single-line tube / admin table release.
+
+Work Log:
+- Pushed b61ca59 → dispatched GitHub Actions "Server Deploy" mode=deploy port=3100 → run 37002465989 SUCCESS (bun install → prisma generate + db push applied Order.lineMode + AdminConfig to the server SQLite → next build standalone → systemd printoo.service restarted).
+- Verify run 37002684342 SUCCESS: app 200 + correct title, /api/orders POST 201 EXTERNAL_API_OK, ADMIN_LOGIN_OK + ADMIN_LIST_OK (server admin password = existing ADMIN_PASSWORD env, unchanged), kurdish font asset 200, printoo24-admin.service active, docker stack untouched.
+- clean-tests run 37002748372 SUCCESS: verification test orders purged, server DB clean.
+
+Stage Summary:
+- LIVE at http://187.124.27.96:3100 — single-line tube mode + forced single-line for Persian/Kurdish, admin orders TABLE with row-click detail, in-panel password change.
+- Admin can now change the panel password themselves; DB row (seeded from env) becomes the source of truth after the first change.

@@ -28,6 +28,7 @@ if [ ! -x "$HOME/.bun/bin/bun" ]; then
   rm -rf /tmp/bunzip /tmp/bun.zip
 fi
 export PATH="$HOME/.bun/bin:$PATH"
+ln -sf "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx"
 echo "bun $($HOME/.bun/bin/bun --version)"
 
 # --- 2. env for Prisma CLI (runtime env comes from systemd) ---------------

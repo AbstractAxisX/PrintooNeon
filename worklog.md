@@ -193,3 +193,28 @@ Stage Summary:
 - Deploy pipeline: workflow_dispatch on github.com/AbstractAxisX/PrintooNeon (modes inspect/deploy/verify/clean-tests; port input).
 - Zero contact with existing services (proven by verify run). Only additions on server: /opt/printoo, /root/.bun, /etc/systemd/system/printoo.service.
 - Server root password stored ONLY in encrypted GitHub Actions secrets; never printed to logs.
+
+---
+Task ID: kurdish-rtl-admin-history
+Agent: main (Z.ai Code)
+Task: 1) Add Kurdish Sorani fonts for testing. 2) FIX the connected-letter bug: typing Persian/Kurdish showed visible cuts between joined letters (e.g. «من» cut between م and ن). 3) Separate English/Kurdish fonts in the picker. 4) Orders with image/GIF + size + color mode + colors in order; simple admin panel; customer order history with codes in localStorage.
+
+Work Log:
+- ROOT CAUSE of the letter-cutting: layoutSign measured per-character advances and perLetter mode drew each character separately. Arabic script needs shaping — isolated per-char drawing breaks the joins. Also startX centering used the per-char sum (wrong for shaped width).
+- neon.ts RTL path: lines containing Arabic script get whole-WORD glyph boxes placed right-to-left (first logical word rightmost); whole-line draw keeps shaping; perLetter draws each word as ONE string (joins intact); ctx.direction set per line; gradient stops at word centers; textTokens() (word units for RTL, chars for Latin) mirrors layout indices for painting + hit-testing.
+- 8 self-hosted Kurdish fonts downloaded from Google Fonts (arabic subset woff2): Lalezar, Baloo Bhaijaan 2, Reem Kufi, Mada, Vazirmatn, Noto Naskh Arabic, Amiri, Harmattan. All verified full Sorani coverage via document.fonts.check (ڕ ڵ ڤ ۆ ێ ە گ چ پ ژ) in the browser.
+- fonts.ts: script field, ku-display/ku-classic categories; FontAccordion: English / کوردی سورانی tabs (separate sections per user), Kurdish cards preview "نیۆن", auto tab-switch on typing + mismatch warning; Designer textarea dir=rtl for Arabic text.
+- LetterPainter: word chips for RTL with explainer note; canvas click hit-test works on word boxes.
+- OrderDialog: ordered colors array (reading order walk per mode) sent as colors[]; animated modes attach a real GIF (exportNeonGif compact: 640x400, flowFrames 30, frameBudget 52, oversize fallback to JPEG; zod limit 8MB); static attach JPEG; entry saved to localStorage history (code, thumb, colors, size).
+- HistoryDialog ("My orders" button with count badge): entries with copyable codes, thumbs, RTL-aware text; clear history.
+- Admin panel /admin: password login (ADMIN_PASSWORD env; sha256 token in localStorage; timingSafeEqual check); order cards with GIF/JPEG preview (GIF animates), RTL text, ordered NUMBERED color swatches, customer/phone/size/mode/font/date/notes; status new→contacted→done; delete. Images lazy-loaded per card (list endpoint sends metadata only).
+- API: /api/admin/login, /api/admin/orders (GET), /api/admin/orders/[id] (GET image / PATCH status / DELETE). Schema: colorsJson column.
+- Gallery: +3 Kurdish presets (بەخێربێن Lalezar, نیۆن Baloo gradient, خۆشەویستی Vazirmatn flow).
+- E2E verified locally (agent-browser + VLM): «من» JOINED (the exact reported bug), بەخێربێن fully connected RTL, per-word painting incl. canvas clicks, smooth gradient across joins, order NE-5405 with GIF + colors, My orders history, admin login/list/status/delete. Fresh launch: 0 page errors. Lint clean. Mobile 375px OK.
+- Deployed to 187.124.27.96:3100 via Actions (run 36991111578). Verified live: GET / 200, orders API 201, ADMIN_LOGIN_OK + ADMIN_LIST_OK, kurdish font 200, other services (printoo24-admin, docker stack) all healthy/untouched. Test orders cleaned (clean-tests run).
+
+Stage Summary:
+- The connected-letter bug is FIXED: Arabic-script text renders as real shaped words — no cuts between joined letters in any color mode.
+- English and Kurdish fonts live in separate tabs; 8 Kurdish Sorani fonts with verified coverage.
+- Orders: image or GIF + size + mode + ordered colors; admin panel at /admin (password: PrintooNeon-KeGs04A78WnF — change via ADMIN_PASSWORD env in /etc/systemd/system/printoo.service); customers keep their order history + codes in localStorage.
+- LIVE: http://187.124.27.96:3100 (+ /admin)

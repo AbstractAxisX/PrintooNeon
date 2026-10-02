@@ -15,13 +15,20 @@ export HOME="${HOME:-/root}"
 echo "== server info =="
 uname -m; free -m | head -2; df -h / | tail -1
 
-# --- 1. bun runtime (user-space install, no apt) --------------------------
+# --- 1. bun runtime (user-space install, no apt, no unzip) -----------------
 if [ ! -x "$HOME/.bun/bin/bun" ]; then
-  echo "== installing bun =="
-  curl -fsSL https://bun.sh/install | bash
+  echo "== installing bun (python3 zip extraction) =="
+  mkdir -p "$HOME/.bun/bin" /tmp/bunzip
+  curl -fsSL -o /tmp/bun.zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip
+  python3 -m zipfile -e /tmp/bun.zip /tmp/bunzip
+  BIN="/tmp/bunzip/bun-linux-x64/bun"
+  [ -f "$BIN" ] || BIN=$(find /tmp/bunzip -type f -name bun | head -1)
+  mv "$BIN" "$HOME/.bun/bin/bun"
+  chmod +x "$HOME/.bun/bin/bun"
+  rm -rf /tmp/bunzip /tmp/bun.zip
 fi
 export PATH="$HOME/.bun/bin:$PATH"
-echo "bun $(bun --version)"
+echo "bun $($HOME/.bun/bin/bun --version)"
 
 # --- 2. env for Prisma CLI (runtime env comes from systemd) ---------------
 mkdir -p "$APP/db"

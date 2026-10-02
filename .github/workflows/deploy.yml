@@ -68,6 +68,48 @@ jobs:
           echo "=== SWAP ==="; swapon --show 2>/dev/null || echo "no swap"
           EOS
 
+      - name: Verify deployment (read-only)
+        if: ${{ github.event.inputs.mode == 'verify' }}
+        run: |
+          set -e
+          PORT="${{ github.event.inputs.port }}"
+          sshpass -e ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $PORT" <<'EOS'
+          set -e
+          PORT="${1:-3100}"
+          echo "=== printoo app ==="
+          systemctl is-active printoo
+          curl -s -o /tmp/page.html -w "GET / -> %{http_code}\n" "http://127.0.0.1:$PORT/"
+          grep -o "<title>[^<]*</title>" /tmp/page.html || echo "NO TITLE FOUND"
+          curl -s -o /dev/null -w "GET /fonts/pacifico.woff2 -> %{http_code}\n" "http://127.0.0.1:$PORT/fonts/pacifico.woff2"
+          echo "--- POST /api/orders ---"
+          curl -s -X POST "http://127.0.0.1:$PORT/api/orders" \
+            -H "Content-Type: application/json" \
+            -d '{"customerName":"Health Check","phone":"5550102030","note":"deployment verification","text":"HELLO","fontId":"pacifico","colorId":"warmpink","mode":"solid","widthCm":60}'
+          echo ""
+          echo "=== other services still healthy (must all be up) ==="
+          systemctl is-active printoo24-admin.service || echo "ADMIN SERVICE DOWN!"
+          docker ps --format '{{.Names}} | {{.Status}}'
+          curl -s -o /dev/null -w "admin (localhost:3000) -> %{http_code}\n" "http://127.0.0.1:3000/" || true
+          curl -s -o /dev/null -w "nginx (localhost:80) -> %{http_code}\n" "http://127.0.0.1:80/" || true
+          echo "VERIFY_SERVER_OK"
+          EOS
+
+      - name: External verification (from runner)
+        if: ${{ github.event.inputs.mode == 'verify' }}
+        run: |
+          set -e
+          PORT="${{ github.event.inputs.port }}"
+          echo "--- external GET / ---"
+          code=$(curl -s -o /tmp/ext.html -w "%{http_code}" --max-time 25 "http://$DEPLOY_HOST:$PORT/")
+          echo "HTTP $code"
+          grep -o "<title>[^<]*</title>" /tmp/ext.html || echo "NO TITLE"
+          echo "--- external POST /api/orders ---"
+          resp=$(curl -s -X POST --max-time 25 "http://$DEPLOY_HOST:$PORT/api/orders" \
+            -H "Content-Type: application/json" \
+            -d '{"customerName":"Ext Check","phone":"5550102040","text":"TEST","fontId":"monoton","colorId":"iceblue","mode":"solid","widthCm":45}')
+          echo "$resp"
+          echo "$resp" | grep -q '"ok":true' && echo "EXTERNAL_API_OK"
+
       - name: Upload project to server
         if: ${{ github.event.inputs.mode == 'deploy' }}
         run: |

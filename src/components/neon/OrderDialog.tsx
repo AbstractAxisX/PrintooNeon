@@ -26,12 +26,13 @@ import {
 } from "lucide-react";
 import { NeonCanvas } from "./NeonCanvas";
 import {
-  downloadNeonPng,
+  downloadNeonFile,
   normalizeDigits,
   getColor,
   getFont,
   getMode,
   COLOR_MODES,
+  isAnimatedMode,
   type NeonSpec,
 } from "@/lib/neon";
 
@@ -58,6 +59,7 @@ export function OrderDialog({
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -66,6 +68,41 @@ export function OrderDialog({
   const mode = getMode(spec.mode);
   const modeName = COLOR_MODES.find((m) => m.id === mode)?.name ?? "Solid";
   const displayText = useMemo(() => text.trim() || "NEON", [text]);
+
+  /** human-readable summary of the full color setup */
+  const colorSummary = useMemo(() => {
+    if (mode === "solid") return color.name;
+    const ids =
+      mode === "flow"
+        ? spec.flowColors ?? []
+        : mode === "cycle"
+          ? spec.cycleColors ?? []
+          : Object.values(spec.letterColors ?? {});
+    const names = ids.map((id) => getColor(id).name);
+    if (mode === "perLetter") {
+      const painted = names.length;
+      return painted ? `${painted} painted letter${painted > 1 ? "s" : ""} · base ${color.name}` : color.name;
+    }
+    return `${modeName}: ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`;
+  }, [mode, spec.flowColors, spec.cycleColors, spec.letterColors, color.name, modeName]);
+
+  /** full design config stored with the order (for exact reproduction) */
+  const configJson = useMemo(
+    () =>
+      JSON.stringify({
+        mode,
+        colorId: spec.colorId,
+        letterColors: spec.letterColors ?? {},
+        flowColors: spec.flowColors ?? [],
+        flowSpeed: spec.flowSpeed ?? 1,
+        cycleColors: spec.cycleColors ?? [],
+        cycleHold: spec.cycleHold ?? 1,
+        cycleFade: spec.cycleFade ?? 0.8,
+        background: spec.background ?? { id: "brick" },
+        on: spec.on,
+      }),
+    [mode, spec]
+  );
 
   const normalizedPhone = normalizeDigits(phone).replace(/[\s-]/g, "");
   const phoneValid = /^\+?[0-9]{7,15}$/.test(normalizedPhone);
@@ -80,13 +117,15 @@ export function OrderDialog({
       return;
     }
 
-    // lightweight JPEG preview to attach to the order
+    // lightweight JPEG snapshot to attach to the order
     const { exportNeonImage } = await import("@/lib/neon");
     const shot = exportNeonImage(spec, {
       width: 1200,
       height: 750,
       type: "image/jpeg",
       quality: 0.85,
+      // pick a moment where animated modes show their blend
+      tSec: isAnimatedMode(mode) ? 1.4 : 0,
     });
 
     setSubmitting(true);
@@ -101,11 +140,10 @@ export function OrderDialog({
           text: displayText,
           fontId: font.id,
           colorId: color.id,
-          colorId2: spec.colorId2 ?? null,
           mode,
           widthCm,
-          wallMode: spec.wall,
-          onState: spec.on,
+          backgroundId: spec.background?.id ?? "brick",
+          configJson,
           imageData: shot?.dataUrl ?? null,
         }),
       });
@@ -131,10 +169,16 @@ export function OrderDialog({
     });
   }
 
-  function handleDownload() {
-    const ok = downloadNeonPng(spec, displayText);
-    if (ok) toast.success("Design image downloaded.");
-    else toast.error("Could not download the image.");
+  async function handleDownload() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const kind = await downloadNeonFile(spec, displayText);
+      if (kind) toast.success(kind === "gif" ? "Animated GIF downloaded." : "Design image downloaded.");
+      else toast.error("Could not download the design.");
+    } finally {
+      setDownloading(false);
+    }
   }
 
   function reset() {
@@ -177,12 +221,12 @@ export function OrderDialog({
                 <Badge variant="secondary" className="font-medium">
                   {font.name}
                 </Badge>
-                <Badge variant="secondary" className="font-medium">
+                <Badge variant="secondary" className="max-w-full truncate font-medium">
                   <span
-                    className="mr-1 inline-block h-2 w-2 rounded-full"
+                    className="mr-1 inline-block h-2 w-2 shrink-0 rounded-full"
                     style={{ background: color.tube, boxShadow: `0 0 6px ${color.glow}` }}
                   />
-                  {modeName === "Solid" ? color.name : `${modeName} · ${color.name}`}
+                  {colorSummary}
                 </Badge>
                 <Badge variant="secondary" className="font-medium">
                   {widthCm} cm wide
@@ -295,11 +339,12 @@ export function OrderDialog({
             <Button
               variant="outline"
               size="lg"
+              disabled={downloading}
               className="mt-4 w-full max-w-xs rounded-xl"
               onClick={handleDownload}
             >
-              <Download className="h-4 w-4" />
-              Download design image
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {isAnimatedMode(mode) ? "Download animated GIF" : "Download design image"}
             </Button>
 
             <Button

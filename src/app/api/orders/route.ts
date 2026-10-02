@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { NEON_FONTS, NEON_COLORS } from "@/lib/neon";
+import { NEON_FONTS } from "@/lib/fonts";
+import { NEON_COLORS } from "@/lib/colors";
+import { BACKGROUNDS } from "@/lib/backgrounds";
 
 export const runtime = "nodejs";
 
@@ -23,11 +25,10 @@ const orderSchema = z.object({
     .max(120, "Text is too long"),
   fontId: z.string().trim().min(1).max(40),
   colorId: z.string().trim().min(1).max(40),
-  colorId2: z.string().trim().min(1).max(40).optional().nullable(),
-  mode: z.enum(["solid", "gradient", "duo", "rainbow"]).optional(),
+  mode: z.enum(["solid", "flow", "perLetter", "cycle"]).optional(),
   widthCm: z.number().int().min(20).max(250),
-  wallMode: z.enum(["night", "day"]).optional(),
-  onState: z.boolean().optional(),
+  backgroundId: z.string().trim().max(60).optional().nullable(),
+  configJson: z.string().max(20_000).optional().nullable(),
   imageData: z
     .string()
     .startsWith("data:image/")
@@ -55,6 +56,24 @@ export async function POST(req: NextRequest) {
         .replace(/[\s-]/g, "");
     }
 
+    // validate the configJson payload shape if present
+    if (typeof body?.configJson === "string" && body.configJson.length > 0) {
+      try {
+        const cfg = JSON.parse(body.configJson) as Record<string, unknown>;
+        const validModes = ["solid", "flow", "perLetter", "cycle"];
+        if (cfg.mode !== undefined && !validModes.includes(String(cfg.mode))) {
+          return NextResponse.json({ error: "Invalid color mode" }, { status: 400 });
+        }
+        const listOk = (v: unknown, max: number) =>
+          Array.isArray(v) && v.length <= max && v.every((x) => typeof x === "string" && x.length <= 40);
+        if (!listOk(cfg.flowColors, 5) || !listOk(cfg.cycleColors, 8)) {
+          return NextResponse.json({ error: "Invalid color list" }, { status: 400 });
+        }
+      } catch {
+        return NextResponse.json({ error: "Invalid design config" }, { status: 400 });
+      }
+    }
+
     const parsed = orderSchema.safeParse(body);
     if (!parsed.success) {
       const msg =
@@ -67,13 +86,11 @@ export async function POST(req: NextRequest) {
     // resolve human-readable names for admin review
     const font = NEON_FONTS.find((f) => f.id === d.fontId);
     const color = NEON_COLORS.find((c) => c.id === d.colorId);
-    const color2 = d.colorId2
-      ? NEON_COLORS.find((c) => c.id === d.colorId2)
-      : undefined;
+    const bg = d.backgroundId ? BACKGROUNDS.find((b) => b.id === d.backgroundId) : undefined;
 
     // unique short code with retries
     let code = generateCode();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 8; i++) {
       const exists = await db.order.findUnique({ where: { code } });
       if (!exists) break;
       code = generateCode();
@@ -90,12 +107,10 @@ export async function POST(req: NextRequest) {
         fontName: font?.name ?? d.fontId,
         colorId: d.colorId,
         colorName: color?.name ?? d.colorId,
-        colorId2: d.colorId2 ?? null,
-        colorName2: color2?.name ?? null,
         mode: d.mode ?? "solid",
         widthCm: d.widthCm,
-        wallMode: d.wallMode ?? "night",
-        onState: d.onState ?? true,
+        backgroundId: bg?.id ?? d.backgroundId ?? null,
+        configJson: d.configJson ?? null,
         imageData: d.imageData ?? null,
       },
       select: { id: true, code: true, createdAt: true },

@@ -1,205 +1,120 @@
 /* ------------------------------------------------------------------
-   Real neon render engine — Canvas 2D
-   Light layers: wide halo -> tight halo -> tube body -> bright core -> hot filament
-   Real neon = hollow letters made of glass tube (stroke only, no fill)
+   Real neon render engine v3 — Canvas 2D
 
    Color modes:
-   - solid    : single color
-   - gradient : smooth A -> B blend across each line
-   - duo      : letters alternate between two colors
-   - rainbow  : each letter gets its own hue from a color wheel
+   - solid    : one steady color
+   - flow     : animated RGB "light strip" — selected colors sweep
+                across the sign like LED neon strips (up to 5)
+   - perLetter: every letter painted individually by clicking it
+   - cycle    : one color at a time, holds N seconds, then fades
+                smoothly into the next (any number of colors)
+
+   Rendering: the sign (bloom + tubes) is drawn on a transparent
+   layer, then composited over the chosen background (photo or
+   solid). Bloom = additive blurred copies of the lit tubes via
+   ctx.filter, with a per-glyph shadowBlur fallback for browsers
+   without ctx.filter.
 ------------------------------------------------------------------- */
 
-export type WallMode = "night" | "day";
-export type ColorMode = "solid" | "gradient" | "duo" | "rainbow";
+export { NEON_COLORS, getColor, mixHex, withAlpha, isDarkHex } from "./colors";
+export { NEON_FONTS, ensureFontsLoaded, getFont, fontCss, FONT_CATEGORIES, type NeonFont } from "./fonts";
+export {
+  BACKGROUNDS,
+  getBackgroundDef,
+  resolveBackground,
+  ensureBackgroundLoaded,
+  loadWallImage,
+  type BackgroundSpec,
+  type BackgroundDef,
+} from "./backgrounds";
 
-export interface NeonColor {
-  id: string;
-  name: string;
-  tube: string; // glass tube color (lit)
-  glow: string; // halo color
+import {
+  getColor,
+  hexToRgb,
+  rgbToCss,
+  lerpRgb,
+  withAlpha,
+  smoothstep,
+  type RGB,
+} from "./colors";
+import { getFont, fontCss, ensureFontsLoaded } from "./fonts";
+import { resolveBackground, drawBackground, ensureBackgroundLoaded } from "./backgrounds";
+import type { BackgroundSpec } from "./backgrounds";
+
+export type ColorMode = "solid" | "flow" | "perLetter" | "cycle";
+
+export const COLOR_MODES: { id: ColorMode; name: string; blurb: string }[] = [
+  { id: "solid", name: "Solid", blurb: "One steady neon color" },
+  { id: "flow", name: "Flow", blurb: "Animated colors sweeping like RGB strips" },
+  { id: "perLetter", name: "Per Letter", blurb: "Click letters to paint each one" },
+  { id: "cycle", name: "Cycle", blurb: "One color at a time, soft crossfade" },
+];
+
+export function getMode(id?: ColorMode): ColorMode {
+  return id === "flow" || id === "perLetter" || id === "cycle" ? id : "solid";
 }
 
-/** Real gas & phosphor neon colors */
-export const NEON_COLORS: NeonColor[] = [
-  { id: "rose", name: "Classic Rose", tube: "#FF4E6E", glow: "#FF2456" },
-  { id: "hotpink", name: "Hot Pink", tube: "#FF87F0", glow: "#FF2BD6" },
-  { id: "magenta", name: "Magenta", tube: "#F76BFF", glow: "#C800F5" },
-  { id: "red", name: "Fire Red", tube: "#FF5240", glow: "#FF2600" },
-  { id: "coral", name: "Coral", tube: "#FF8A78", glow: "#FF5F4D" },
-  { id: "orange", name: "Sunset Orange", tube: "#FF9E4A", glow: "#FF7A00" },
-  { id: "gold", name: "Sun Gold", tube: "#FFD95E", glow: "#FFC400" },
-  { id: "lemon", name: "Lemon Zest", tube: "#F0FF7A", glow: "#DFFF00" },
-  { id: "green", name: "Neon Green", tube: "#4EF07E", glow: "#00E65A" },
-  { id: "mint", name: "Mint", tube: "#7CFFC4", glow: "#00FFA8" },
-  { id: "aqua", name: "Aqua", tube: "#37F0D8", glow: "#00D9C0" },
-  { id: "ice", name: "Ice Blue", tube: "#74DBFF", glow: "#17B9FF" },
-  { id: "sky", name: "Sky Blue", tube: "#8FB8FF", glow: "#4D8DFF" },
-  { id: "violet", name: "Soft Violet", tube: "#B48CFF", glow: "#8E5CFF" },
-  { id: "ultra", name: "Ultraviolet", tube: "#9A6BFF", glow: "#6C2BFF" },
-  { id: "white", name: "Pure White", tube: "#FFFFFF", glow: "#E9F4FF" },
-  { id: "warmwhite", name: "Warm White", tube: "#FFF2D8", glow: "#FFDF9E" },
-];
-
-export interface NeonFont {
-  id: string;
-  name: string;
-  family: string; // CSS family name
-  weight: number;
-  /** Relative tube thickness vs font size — thin scripts need a fatter tube */
-  tubeFactor: number;
+export function isAnimatedMode(mode: ColorMode): boolean {
+  return mode === "flow" || mode === "cycle";
 }
 
-/** Neon-friendly display fonts (Latin) */
-export const NEON_FONTS: NeonFont[] = [
-  { id: "pacifico", name: "Pacifico", family: "Pacifico", weight: 400, tubeFactor: 0.065 },
-  { id: "greatvibes", name: "Great Vibes", family: "Great Vibes", weight: 400, tubeFactor: 0.08 },
-  { id: "sacramento", name: "Sacramento", family: "Sacramento", weight: 400, tubeFactor: 0.085 },
-  { id: "satisfy", name: "Satisfy", family: "Satisfy", weight: 400, tubeFactor: 0.07 },
-  { id: "dancing", name: "Dancing Script", family: "Dancing Script", weight: 700, tubeFactor: 0.062 },
-  { id: "kaushan", name: "Kaushan", family: "Kaushan Script", weight: 400, tubeFactor: 0.06 },
-  { id: "yellowtail", name: "Yellowtail", family: "Yellowtail", weight: 400, tubeFactor: 0.065 },
-  { id: "lobster", name: "Lobster", family: "Lobster", weight: 400, tubeFactor: 0.05 },
-  { id: "caveat", name: "Caveat", family: "Caveat", weight: 700, tubeFactor: 0.065 },
-  { id: "bebas", name: "Bebas Neue", family: "Bebas Neue", weight: 400, tubeFactor: 0.045 },
-  { id: "monoton", name: "Monoton", family: "Monoton", weight: 400, tubeFactor: 0.05 },
-  { id: "righteous", name: "Righteous", family: "Righteous", weight: 400, tubeFactor: 0.05 },
-  { id: "passion", name: "Passion One", family: "Passion One", weight: 700, tubeFactor: 0.045 },
-  { id: "marker", name: "Permanent Marker", family: "Permanent Marker", weight: 400, tubeFactor: 0.06 },
-  { id: "audiowide", name: "Audiowide", family: "Audiowide", weight: 400, tubeFactor: 0.05 },
-  { id: "playfair", name: "Playfair", family: "Playfair Display", weight: 700, tubeFactor: 0.055 },
-];
-
-export const COLOR_MODES: { id: ColorMode; name: string }[] = [
-  { id: "solid", name: "Solid" },
-  { id: "gradient", name: "Gradient" },
-  { id: "duo", name: "Two-Tone" },
-  { id: "rainbow", name: "Rainbow" },
-];
+/* ---------------- spec ---------------- */
 
 export interface NeonSpec {
   lines: string[];
   fontId: string;
-  colorId: string;
-  /** second color (used by gradient & two-tone modes) */
-  colorId2?: string;
-  /** color mode — defaults to solid */
   mode?: ColorMode;
+  /** base color (solid mode / unpainted letters / initial brush) */
+  colorId: string;
+  /** perLetter mode: character index (newlines skipped) -> colorId */
+  letterColors?: Record<number, string>;
+  /** flow mode: 2–5 colorIds that sweep across the sign */
+  flowColors?: string[];
+  /** flow speed multiplier (0.25 slow … 3 fast) */
+  flowSpeed?: number;
+  /** cycle mode: colorIds to crossfade through */
+  cycleColors?: string[];
+  /** cycle mode: seconds each color stays lit */
+  cycleHold?: number;
+  /** cycle mode: seconds of the crossfade */
+  cycleFade?: number;
+  /** background: image or solid */
+  background?: BackgroundSpec;
+  /** power switch */
   on: boolean;
-  wall: WallMode;
-  /** enable flicker animation (preview canvas only) */
-  flicker?: boolean;
 }
 
 export interface DrawOptions {
-  /** time for flicker animation (ms) */
-  time?: number;
-  /** global brightness multiplier (flicker) */
-  brightness?: number;
+  /** animation time in seconds */
+  tSec?: number;
+  /** device pixel ratio of the target canvas transform */
+  dpr?: number;
   /** fallback text when input is empty */
   placeholder?: string;
-  /** relative horizontal padding */
-  padX?: number;
-  /** relative vertical padding */
-  padY?: number;
+}
+
+/* ---------------- layout + glyph boxes ---------------- */
+
+export interface GlyphBox {
+  ch: string;
+  /** index in the text with newlines removed */
+  index: number;
+  line: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface NeonLayout {
-  line: { text: string; fontSize: number; y: number; tube: number }[];
-  width: number; // real design width (px)
-  height: number; // real design height (px)
-  bottom: number; // lowest point (for floor reflection)
+  line: { text: string; fontSize: number; y: number; tube: number; startX: number; width: number }[];
+  glyphs: GlyphBox[];
+  width: number;
+  height: number;
+  bottom: number;
 }
 
-/* ---------------- color utils ---------------- */
-
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  const n = parseInt(
-    h.length === 3
-      ? h
-          .split("")
-          .map((c) => c + c)
-          .join("")
-      : h,
-    16
-  );
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-export function mixHex(a: string, b: string, t: number): string {
-  const [r1, g1, b1] = hexToRgb(a);
-  const [r2, g2, b2] = hexToRgb(b);
-  const r = Math.round(r1 + (r2 - r1) * t);
-  const g = Math.round(g1 + (g2 - g1) * t);
-  const bl = Math.round(b1 + (b2 - b1) * t);
-  return `rgb(${r}, ${g}, ${bl})`;
-}
-
-export function withAlpha(hex: string, a: number): string {
-  const [r, g, b] = hexToRgb(hex);
-  return `rgba(${r}, ${g}, ${b}, ${a})`;
-}
-
-function hslToHex(h: number, s: number, l: number): string {
-  s /= 100;
-  l /= 100;
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) =>
-    l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-  const to = (x: number) =>
-    Math.round(255 * x)
-      .toString(16)
-      .padStart(2, "0");
-  return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
-}
-
-/* ---------------- fonts ---------------- */
-
-export function getFont(id: string): NeonFont {
-  return NEON_FONTS.find((f) => f.id === id) ?? NEON_FONTS[0];
-}
-
-export function getColor(id: string): NeonColor {
-  return NEON_COLORS.find((c) => c.id === id) ?? NEON_COLORS[0];
-}
-
-export function getMode(id?: ColorMode): ColorMode {
-  return COLOR_MODES.find((m) => m.id === id)?.id ?? "solid";
-}
-
-function fontCss(font: NeonFont, px: number): string {
-  return `${font.weight} ${px}px "${font.family}", "Inter", sans-serif`;
-}
-
-/** Warm up fonts before drawing (canvas needs fonts loaded in the document) */
-export async function ensureFontsLoaded(specs: NeonFont[]): Promise<void> {
-  if (typeof document === "undefined") return;
-  try {
-    await Promise.all(
-      specs.map((f) => document.fonts.load(`${f.weight} 32px "${f.family}"`))
-    );
-    await document.fonts.ready;
-  } catch {
-    /* if a font fails we still draw with the fallback */
-  }
-}
-
-/* ---------------- realistic flicker ---------------- */
-
-/** Flicker pattern: steady base + micro jitter + occasional stutters */
-export function flickerLevel(tMs: number): number {
-  const s = tMs / 1000;
-  let v = 1 - 0.05 * (0.5 + 0.5 * Math.sin(s * 31.4) * Math.sin(s * 17.3));
-  const stutter = Math.sin(s * 0.9) * Math.sin(s * 2.33);
-  if (stutter > 0.84) {
-    v -= 0.5 * Math.abs(Math.sin(s * 43));
-  }
-  return Math.min(1, Math.max(0.14, v));
-}
-
-/* ---------------- layout ---------------- */
+const LINE_GAP = 1.24;
 
 export function layoutSign(
   ctx: CanvasRenderingContext2D,
@@ -208,14 +123,14 @@ export function layoutSign(
   spec: NeonSpec,
   opts: DrawOptions = {}
 ): NeonLayout {
-  const padX = opts.padX ?? 0.08;
-  const padY = opts.padY ?? 0.16;
+  const padX = 0.075;
+  const padY = 0.14;
   const maxW = cw * (1 - padX * 2);
   const availH = ch * (1 - padY * 2);
-  const lineGap = 1.22;
 
-  let lines = spec.lines.map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) {
+  let lines = spec.lines.map((l) => l.replace(/\r/g, ""));
+  while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
+  if (lines.length === 0 || lines.every((l) => l.trim() === "")) {
     lines = [opts.placeholder ?? "NEON"];
   }
 
@@ -223,13 +138,15 @@ export function layoutSign(
 
   // measure at 100px then scale down
   const sizes = lines.map((text) => {
+    const t = text.trim();
+    if (!t) return 100;
     ctx.font = fontCss(font, 100);
-    const w = ctx.measureText(text).width;
+    const w = ctx.measureText(t).width;
     return w > 0 ? (100 * maxW) / w : 100;
   });
 
   // height constraint: everything must fit in availH
-  let total = sizes.reduce((s, fs) => s + fs * lineGap, 0);
+  let total = sizes.reduce((s, fs) => s + (fs > 0 ? fs * LINE_GAP : 0), 0);
   if (total > availH && total > 0) {
     const k = availH / total;
     for (let i = 0; i < sizes.length; i++) sizes[i] *= k;
@@ -238,351 +155,577 @@ export function layoutSign(
 
   const cx = cw / 2;
   let top = (ch - total) / 2;
-  let widest = 0;
   const line: NeonLayout["line"] = [];
+  const glyphs: GlyphBox[] = [];
 
-  lines.forEach((text, i) => {
+  // char index base of each line inside the "newlines removed" string
+  let off = 0;
+  const lineOffsets: number[] = [];
+  for (const l of lines) {
+    lineOffsets.push(off);
+    off += Array.from(l).length;
+  }
+
+  lines.forEach((raw, i) => {
+    const drawText = raw.trim();
     const fs = sizes[i];
-    const y = top + (fs * lineGap) / 2;
-    top += fs * lineGap;
+    const y = top + (fs * LINE_GAP) / 2;
+    top += fs * LINE_GAP;
     ctx.font = fontCss(font, fs);
-    widest = Math.max(widest, ctx.measureText(text).width);
+    const width = drawText ? ctx.measureText(drawText).width : 0;
+
+    // glyph boxes (advance-based positions; used for painting + hit-testing)
+    const chars = Array.from(drawText);
+    const rawChars = Array.from(raw);
+    const lead = rawChars.length - Array.from(raw.trimStart()).length;
+    let adv = 0;
+    for (const c of chars) adv += ctx.measureText(c).width;
+
     line.push({
-      text,
+      text: drawText,
       fontSize: fs,
       y,
       tube: Math.max(2.5, fs * font.tubeFactor),
+      startX: cx - adv / 2,
+      width: Math.min(width, maxW),
+    });
+
+    let x = cx - adv / 2;
+    chars.forEach((cch, j) => {
+      const w = ctx.measureText(cch).width;
+      glyphs.push({
+        ch: cch,
+        index: lineOffsets[i] + lead + j,
+        line: i,
+        x,
+        y: y - fs * 0.55,
+        w: Math.max(w, fs * 0.1),
+        h: fs * 1.1,
+      });
+      x += w;
     });
   });
 
+  const widest = line.reduce((m, l) => Math.max(m, l.width), 0);
   return {
     line,
+    glyphs,
     width: Math.min(widest, maxW),
     height: total,
     bottom: (ch - total) / 2 + total,
   };
 }
 
-/* ---------------- wall ---------------- */
+/** Characters of the raw text with newlines removed (index target for painting) */
+export function textGlyphs(text: string): { ch: string; index: number }[] {
+  const out: { ch: string; index: number }[] = [];
+  let idx = 0;
+  for (const ch of Array.from(text)) {
+    if (ch === "\n") continue;
+    out.push({ ch, index: idx });
+    idx++;
+  }
+  return out;
+}
 
-const WALL = {
-  night: {
-    top: "#221C26",
-    bottom: "#120E16",
-    vignette: 0.55,
-    ambient: 0.14, // colored ambient light strength on the wall
-    haloA: 0.6,
-    halo2A: 1,
-  },
-  day: {
-    top: "#EFE9DE",
-    bottom: "#E2DBCD",
-    vignette: 0.12,
-    ambient: 0.05,
-    haloA: 0.22,
-    halo2A: 0.6,
-  },
-} as const;
+/* ---------------- per-frame color resolution ---------------- */
 
-export function drawWall(
-  ctx: CanvasRenderingContext2D,
-  cw: number,
-  ch: number,
-  wall: WallMode,
-  glowColor?: string
-): void {
-  const w = WALL[wall];
-  const g = ctx.createLinearGradient(0, 0, 0, ch);
-  g.addColorStop(0, w.top);
-  g.addColorStop(1, w.bottom);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, cw, ch);
+export interface GlyphColor {
+  tube: RGB;
+  glow: RGB;
+}
 
-  // colored ambient light on the wall
-  if (glowColor) {
-    const r = ctx.createRadialGradient(
-      cw / 2,
-      ch / 2,
-      0,
-      cw / 2,
-      ch / 2,
-      Math.max(cw, ch) * 0.62
-    );
-    r.addColorStop(0, withAlpha(glowColor, w.ambient));
-    r.addColorStop(1, withAlpha(glowColor, 0));
-    ctx.fillStyle = r;
-    ctx.fillRect(0, 0, cw, ch);
+export interface FrameColors {
+  /** one color per glyph, aligned with layout.glyphs */
+  glyph: GlyphColor[];
+  uniform: boolean;
+  dominantGlow: RGB;
+}
+
+function colorOf(id: string): GlyphColor {
+  const c = getColor(id);
+  return { tube: hexToRgb(c.tube), glow: hexToRgb(c.glow) };
+}
+
+/** sample an interpolated color from a ring of color ids at p ∈ [0,1) */
+function sampleRing(ids: string[], p: number): GlyphColor {
+  if (ids.length === 0) return colorOf("warmwhite");
+  if (ids.length === 1) return colorOf(ids[0]);
+  const n = ids.length;
+  const q = ((p % 1) + 1) % 1;
+  const seg = Math.min(n - 1, Math.floor(q * n));
+  const f = q * n - seg;
+  const A = colorOf(ids[seg]);
+  const B = colorOf(ids[(seg + 1) % n]);
+  return { tube: lerpRgb(A.tube, B.tube, f), glow: lerpRgb(A.glow, B.glow, f) };
+}
+
+/** cycle mode: the single color visible at time t (with crossfade) */
+export function cycleColorAt(ids: string[], hold: number, fade: number, t: number): GlyphColor {
+  if (ids.length === 0) return colorOf("warmwhite");
+  if (ids.length === 1) return colorOf(ids[0]);
+  const h = Math.max(0.05, hold);
+  const f = Math.max(0, fade);
+  const period = ids.length * (h + f);
+  const phase = ((t % period) + period) % period;
+  const seg = Math.floor(phase / (h + f));
+  const within = phase - seg * (h + f);
+  if (within < h || f <= 0.001) return colorOf(ids[seg % ids.length]);
+  const k = smoothstep((within - h) / f);
+  const A = colorOf(ids[seg % ids.length]);
+  const B = colorOf(ids[(seg + 1) % ids.length]);
+  return { tube: lerpRgb(A.tube, B.tube, k), glow: lerpRgb(A.glow, B.glow, k) };
+}
+
+function averageGlow(colors: GlyphColor[]): RGB {
+  if (colors.length === 0) return [255, 220, 160];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const c of colors) {
+    r += c.glow[0];
+    g += c.glow[1];
+    b += c.glow[2];
+  }
+  return [Math.round(r / colors.length), Math.round(g / colors.length), Math.round(b / colors.length)];
+}
+
+function resolveFrameColors(spec: NeonSpec, layout: NeonLayout, t: number): FrameColors {
+  const mode = getMode(spec.mode);
+
+  if (mode === "solid") {
+    const c = colorOf(spec.colorId);
+    return { glyph: layout.glyphs.map(() => c), uniform: true, dominantGlow: c.glow };
   }
 
-  // corner vignette
+  if (mode === "cycle") {
+    const ids = (spec.cycleColors ?? []).filter((id) => id);
+    const c = ids.length
+      ? cycleColorAt(ids, spec.cycleHold ?? 1, spec.cycleFade ?? 0.8, t)
+      : colorOf(spec.colorId);
+    return { glyph: layout.glyphs.map(() => c), uniform: true, dominantGlow: c.glow };
+  }
+
+  if (mode === "flow") {
+    const ids = (spec.flowColors ?? []).filter((id) => id);
+    if (ids.length === 0) ids.push(spec.colorId);
+    const speed = Math.min(3, Math.max(0.25, spec.flowSpeed ?? 1));
+    const left = layout.glyphs.length ? Math.min(...layout.glyphs.map((g) => g.x)) : 0;
+    const right = layout.glyphs.length ? Math.max(...layout.glyphs.map((g) => g.x + g.w)) : 1;
+    const span = Math.max(1, right - left);
+    const glyph = layout.glyphs.map((g) => {
+      const xn = (g.x + g.w / 2 - left) / span;
+      return sampleRing(ids, xn * 0.4 + t * speed * 0.085);
+    });
+    const ringAvg = averageGlow(ids.map((id) => colorOf(id)));
+    return { glyph, uniform: false, dominantGlow: ringAvg };
+  }
+
+  // perLetter
+  const map = spec.letterColors ?? {};
+  const base = colorOf(spec.colorId);
+  const glyph = layout.glyphs.map((g) => (map[g.index] ? colorOf(map[g.index]) : base));
+  return { glyph, uniform: false, dominantGlow: averageGlow(glyph) };
+}
+
+/* ---------------- scratch canvases ---------------- */
+
+const scratches = new Map<string, HTMLCanvasElement>();
+
+function getScratch(key: string, cw: number, ch: number, dpr: number): HTMLCanvasElement {
+  const w = Math.max(2, Math.round(cw * dpr));
+  const h = Math.max(2, Math.round(ch * dpr));
+  const k = `${key}:${w}x${h}`;
+  let c = scratches.get(k);
+  if (!c) {
+    c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    scratches.set(k, c);
+    if (scratches.size > 10) {
+      // drop one entry from another size to keep memory in check
+      for (const kk of scratches.keys()) {
+        if (!kk.startsWith(key)) {
+          scratches.delete(kk);
+          break;
+        }
+      }
+    }
+  }
+  return c;
+}
+
+function scratchCtx(key: string, cw: number, ch: number, dpr: number): CanvasRenderingContext2D | null {
+  const c = getScratch(key, cw, ch, dpr);
+  const ctx = c.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.filter = "none";
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = "transparent";
+  return ctx;
+}
+
+/* ---------------- ctx.filter support ---------------- */
+
+let filterSupport: boolean | null = null;
+
+function supportsFilter(): boolean {
+  if (filterSupport === null) {
+    try {
+      const c = document.createElement("canvas").getContext("2d");
+      if (!c || typeof c.filter !== "string") {
+        filterSupport = false;
+      } else {
+        c.filter = "blur(2px)";
+        filterSupport = c.filter !== "none" && c.filter !== "";
+        c.filter = "none";
+      }
+    } catch {
+      filterSupport = false;
+    }
+  }
+  return filterSupport;
+}
+
+/* ---------------- paint styles ---------------- */
+
+type LineStyle = string | CanvasGradient;
+
+interface PaintSet {
+  glow: LineStyle;
+  tube: LineStyle;
+  core: LineStyle;
+  filament: LineStyle;
+}
+
+const WHITE: RGB = [255, 255, 255];
+
+function flatPaint(gc: GlyphColor): PaintSet {
+  return {
+    glow: rgbToCss(gc.glow),
+    tube: rgbToCss(gc.tube),
+    core: rgbToCss(lerpRgb(gc.tube, WHITE, 0.55)),
+    filament: rgbToCss(lerpRgb(gc.tube, WHITE, 0.85)),
+  };
+}
+
+/** smooth gradient across the line with stops at glyph centers (flow mode) */
+function gradientPaint(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  x1: number,
+  glyphs: GlyphBox[],
+  colors: GlyphColor[]
+): PaintSet {
+  const span = Math.max(1, x1 - x0);
+  const mk = (pick: (g: GlyphColor) => RGB): CanvasGradient => {
+    const grad = ctx.createLinearGradient(x0, 0, x0 + span, 0);
+    for (let i = 0; i < glyphs.length; i++) {
+      const p = Math.min(1, Math.max(0, (glyphs[i].x + glyphs[i].w / 2 - x0) / span));
+      grad.addColorStop(p, rgbToCss(pick(colors[i])));
+    }
+    return grad;
+  };
+  return {
+    glow: mk((g) => g.glow),
+    tube: mk((g) => g.tube),
+    core: mk((g) => lerpRgb(g.tube, WHITE, 0.55)),
+    filament: mk((g) => lerpRgb(g.tube, WHITE, 0.85)),
+  };
+}
+
+function strokeLine(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  style: LineStyle,
+  width: number,
+  alpha: number
+): void {
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = width;
+  ctx.strokeStyle = style;
+  ctx.strokeText(text, x, y);
+}
+
+/** group glyphs & colors per line once per frame */
+interface LineGroup {
+  l: NeonLayout["line"][number];
+  boxes: GlyphBox[];
+  colors: GlyphColor[];
+  /** flat/gradient paint, or null for per-glyph (perLetter) mode */
+  paint: PaintSet | null;
+  perGlyph: PaintSet[] | null;
+}
+
+function buildLineGroups(
+  ctx: CanvasRenderingContext2D,
+  layout: NeonLayout,
+  frame: FrameColors,
+  mode: ColorMode
+): LineGroup[] {
+  const boxesByLine: GlyphBox[][] = layout.line.map(() => []);
+  const colorsByLine: GlyphColor[][] = layout.line.map(() => []);
+  layout.glyphs.forEach((g, i) => {
+    if (g.line < layout.line.length) {
+      boxesByLine[g.line].push(g);
+      colorsByLine[g.line].push(frame.glyph[i]);
+    }
+  });
+  return layout.line.map((l, li) => {
+    const boxes = boxesByLine[li];
+    const colors = colorsByLine[li];
+    let paint: PaintSet | null = null;
+    let perGlyph: PaintSet[] | null = null;
+    if (frame.uniform) {
+      paint = flatPaint(frame.glyph[0] ?? colorOf("warmwhite"));
+    } else if (mode === "perLetter") {
+      perGlyph = colors.map((c) => flatPaint(c));
+    } else {
+      paint = gradientPaint(ctx, l.startX, l.startX + l.width, boxes, colors);
+    }
+    return { l, boxes, colors, paint, perGlyph };
+  });
+}
+
+/* ---------------- the lit sign (bloom + tubes) on a transparent layer ---------------- */
+
+function drawLitSign(
+  nctx: CanvasRenderingContext2D,
+  cw: number,
+  ch: number,
+  dpr: number,
+  fontId: string,
+  mode: ColorMode,
+  layout: NeonLayout,
+  frame: FrameColors,
+  dark: boolean
+): void {
+  const tubeRef = layout.line.reduce((m, l) => Math.max(m, l.tube), 4);
+  const groups = buildLineGroups(nctx, layout, frame, mode);
+  const font = getFont(fontId);
+
+  nctx.save();
+  nctx.textAlign = "left";
+  nctx.textBaseline = "middle";
+  nctx.lineJoin = "round";
+  nctx.lineCap = "round";
+
+  /* ---- 1. light layer: bright saturated strokes on their own canvas ---- */
+  const lctx = scratchCtx("light", cw, ch, dpr);
+  if (lctx) {
+    lctx.textAlign = "left";
+    lctx.textBaseline = "middle";
+    lctx.lineJoin = "round";
+    lctx.lineCap = "round";
+    lctx.globalCompositeOperation = "lighter";
+    for (const g of groups) {
+      if (!g.l.text) continue;
+      lctx.font = fontCss(font, g.l.fontSize);
+      if (g.paint) {
+        strokeLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, g.l.tube * 1.35, 0.9);
+      } else if (g.perGlyph) {
+        for (let i = 0; i < g.boxes.length; i++) {
+          const gb = g.boxes[i];
+          strokeLine(lctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].glow, g.l.tube * 1.35, 0.9);
+        }
+      }
+    }
+    const lightCanvas = getScratch("light", cw, ch, dpr);
+
+    /* ---- 2. bloom: blurred additive copies (or shadowBlur fallback) ---- */
+    if (lightCanvas && supportsFilter()) {
+      nctx.globalCompositeOperation = "lighter";
+      const a = dark ? 1 : 0.55;
+      nctx.filter = `blur(${(tubeRef * 2.2).toFixed(1)}px)`;
+      nctx.globalAlpha = 0.8 * a;
+      nctx.drawImage(lightCanvas, 0, 0, cw, ch);
+      nctx.filter = `blur(${(tubeRef * 6.0).toFixed(1)}px)`;
+      nctx.globalAlpha = 0.45 * a;
+      nctx.drawImage(lightCanvas, 0, 0, cw, ch);
+      if (dark) {
+        nctx.filter = `blur(${(tubeRef * 12).toFixed(1)}px)`;
+        nctx.globalAlpha = 0.2;
+        nctx.drawImage(lightCanvas, 0, 0, cw, ch);
+      }
+      nctx.filter = "none";
+      nctx.globalAlpha = 1;
+      nctx.globalCompositeOperation = "source-over";
+    } else {
+      // fallback: per-glyph shadowBlur glow (slower, visually close)
+      nctx.globalCompositeOperation = "lighter";
+      for (const g of groups) {
+        if (!g.l.text) continue;
+        nctx.font = fontCss(font, g.l.fontSize);
+        if (g.paint) {
+          const glowCss = g.paint.glow as string;
+          nctx.shadowColor = glowCss;
+          nctx.shadowBlur = g.l.tube * 6.5;
+          strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.35);
+          strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.3);
+        } else if (g.perGlyph) {
+          for (let i = 0; i < g.boxes.length; i++) {
+            const gb = g.boxes[i];
+            const glowCss = g.perGlyph[i].glow as string;
+            nctx.shadowColor = glowCss;
+            nctx.shadowBlur = g.l.tube * 6.5;
+            strokeLine(nctx, gb.ch, gb.x, g.l.y, glowCss, g.l.tube * 1.2, 0.4);
+          }
+        }
+      }
+      nctx.shadowBlur = 0;
+      nctx.shadowColor = "transparent";
+      nctx.globalAlpha = 1;
+      nctx.globalCompositeOperation = "source-over";
+    }
+  }
+
+  /* ---- 3. glass tube body ---- */
+  for (const g of groups) {
+    if (!g.l.text) continue;
+    nctx.font = fontCss(font, g.l.fontSize);
+    if (g.paint) {
+      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube, 1);
+    } else if (g.perGlyph) {
+      for (let i = 0; i < g.boxes.length; i++) {
+        const gb = g.boxes[i];
+        strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, g.l.tube, 1);
+      }
+    }
+  }
+
+  /* ---- 4. hot core + filament (additive) ---- */
+  nctx.globalCompositeOperation = "lighter";
+  for (const g of groups) {
+    if (!g.l.text) continue;
+    nctx.font = fontCss(font, g.l.fontSize);
+    if (g.paint) {
+      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.core, g.l.tube * 0.45, 0.95);
+      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.filament, g.l.tube * 0.18, 0.9);
+    } else if (g.perGlyph) {
+      for (let i = 0; i < g.boxes.length; i++) {
+        const gb = g.boxes[i];
+        strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].core, g.l.tube * 0.45, 0.95);
+        strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].filament, g.l.tube * 0.18, 0.9);
+      }
+    }
+  }
+  nctx.globalCompositeOperation = "source-over";
+  nctx.globalAlpha = 1;
+  nctx.restore();
+}
+
+/* ---------------- off state ---------------- */
+
+function drawOffSign(
+  nctx: CanvasRenderingContext2D,
+  fontId: string,
+  layout: NeonLayout,
+  frame: FrameColors,
+  dark: boolean
+): void {
+  const base: RGB = dark ? [74, 69, 63] : [150, 143, 132];
+  const groups = buildLineGroups(nctx, layout, frame, getMode("solid"));
+  const font = getFont(fontId);
+
+  nctx.save();
+  nctx.textAlign = "left";
+  nctx.textBaseline = "middle";
+  nctx.lineJoin = "round";
+  nctx.lineCap = "round";
+  for (const g of groups) {
+    if (!g.l.text) continue;
+    nctx.font = fontCss(font, g.l.fontSize);
+    if (g.paint) {
+      // pale unlit glass + faint colored sheen
+      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), g.l.tube, 0.92);
+      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube * 0.22, 0.28);
+    } else if (g.perGlyph) {
+      for (let i = 0; i < g.boxes.length; i++) {
+        const gb = g.boxes[i];
+        const glass = rgbToCss(lerpRgb(g.colors[i].tube, base, 0.55));
+        strokeLine(nctx, gb.ch, gb.x, g.l.y, glass, g.l.tube, 0.92);
+      }
+    }
+  }
+  nctx.globalAlpha = 1;
+  nctx.restore();
+}
+
+/* ---------------- ambient light + vignette ---------------- */
+
+function drawAmbient(ctx: CanvasRenderingContext2D, cw: number, ch: number, glow: RGB, dark: boolean): void {
+  const strength = dark ? 0.14 : 0.05;
+  const css = `rgb(${glow[0]}, ${glow[1]}, ${glow[2]})`;
+  const r = ctx.createRadialGradient(cw / 2, ch / 2, 0, cw / 2, ch / 2, Math.max(cw, ch) * 0.65);
+  r.addColorStop(0, withAlpha(css, strength));
+  r.addColorStop(1, withAlpha(css, 0));
+  ctx.fillStyle = r;
+  ctx.fillRect(0, 0, cw, ch);
+}
+
+function drawVignette(ctx: CanvasRenderingContext2D, cw: number, ch: number, dark: boolean): void {
+  const a = dark ? 0.5 : 0.1;
   const v = ctx.createRadialGradient(
     cw / 2,
     ch / 2,
-    Math.min(cw, ch) * 0.35,
+    Math.min(cw, ch) * 0.38,
     cw / 2,
     ch / 2,
-    Math.max(cw, ch) * 0.75
+    Math.max(cw, ch) * 0.78
   );
   v.addColorStop(0, "rgba(0,0,0,0)");
-  v.addColorStop(1, `rgba(0,0,0,${w.vignette})`);
+  v.addColorStop(1, `rgba(0,0,0,${a})`);
   ctx.fillStyle = v;
   ctx.fillRect(0, 0, cw, ch);
 }
 
-/* ---------------- per-letter colors (duo / rainbow) ---------------- */
-
-interface Seg {
-  text: string;
-  x: number;
-  tube: string; // hex
-  glow: string; // hex
-}
-
-function buildSegments(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  cx: number,
-  mode: ColorMode,
-  A: NeonColor,
-  B: NeonColor
-): Seg[] {
-  const widths: number[] = [];
-  let total = 0;
-  for (const ch of text) {
-    const w = ctx.measureText(ch).width;
-    widths.push(w);
-    total += w;
-  }
-  const segs: Seg[] = [];
-  let x = cx - total / 2;
-  let letterIdx = 0;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    let tube: string;
-    let glow: string;
-    if (ch === " ") {
-      tube = A.tube;
-      glow = A.glow;
-    } else if (mode === "duo") {
-      const c = letterIdx % 2 === 0 ? A : B;
-      tube = c.tube;
-      glow = c.glow;
-    } else {
-      // rainbow — rotate hue per letter
-      const h = (letterIdx * 47) % 360;
-      tube = hslToHex(h, 100, 74);
-      glow = hslToHex(h, 100, 55);
-    }
-    if (ch !== " ") letterIdx++;
-    segs.push({ text: ch, x, tube, glow });
-    x += widths[i];
-  }
-  return segs;
-}
-
-/** Average glow color for ambient wall light / shadows */
-function ambientGlowColor(spec: NeonSpec): string {
-  const A = getColor(spec.colorId);
-  const mode = getMode(spec.mode);
-  if (mode === "gradient" || mode === "duo") {
-    const B = spec.colorId2 ? getColor(spec.colorId2) : getColor("ice");
-    return mixHex(A.glow, B.glow, 0.5);
-  }
-  return A.glow;
-}
-
-/* ---------------- sign drawing ---------------- */
-
-interface SignPassOptions {
-  alphaMul?: number;
-  simple?: boolean; // for reflection / mini card: tube + core only
-}
-
-type ColorTransform = (c: NeonColor) => string;
-
-export function drawSignPasses(
-  ctx: CanvasRenderingContext2D,
-  layout: NeonLayout,
-  cw: number,
-  spec: NeonSpec,
-  opts: SignPassOptions = {}
-): void {
-  const A = getColor(spec.colorId);
-  const mode = getMode(spec.mode);
-  const B =
-    mode === "gradient" || mode === "duo"
-      ? spec.colorId2
-        ? getColor(spec.colorId2)
-        : getColor("ice")
-      : A;
-  const wallC = WALL[spec.wall];
-  const font = getFont(spec.fontId);
-  const alphaMul = opts.alphaMul ?? 1;
-  const cx = cw / 2;
-  const perLetter = mode === "duo" || mode === "rainbow";
-  const shadowCol =
-    mode === "solid" || mode === "rainbow"
-      ? A.glow
-      : mixHex(A.glow, B.glow, 0.5);
-
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-
-  for (const l of layout.line) {
-    ctx.font = fontCss(font, l.fontSize);
-    const text = l.text;
-
-    // ---- resolve stroke styles ----
-    // solid mode: flat color from A
-    // gradient mode: smooth A -> B linear gradient across the line
-    // duo / rainbow: per-letter segments
-    let lineW = 0;
-    if (mode === "gradient") lineW = ctx.measureText(text).width;
-    const x0 = cx - lineW / 2;
-    const x1 = cx + lineW / 2;
-
-    const grad = (fn: ColorTransform): CanvasGradient => {
-      const g = ctx.createLinearGradient(x0, 0, x1, 0);
-      g.addColorStop(0, fn(A));
-      g.addColorStop(1, fn(B));
-      return g;
-    };
-    const style = (fn: ColorTransform): string | CanvasGradient =>
-      mode === "gradient" ? grad(fn) : fn(A);
-
-    let segs: Seg[] | null = null;
-    if (perLetter) {
-      segs = buildSegments(ctx, text, cx, mode, A, B);
-    }
-
-    /** stroke the current line (whole-line or per-letter) */
-    const strokeLine = (
-      lineStyle: string | CanvasGradient,
-      segStyle: (s: Seg) => string,
-      width: number,
-      alpha: number
-    ) => {
-      ctx.globalAlpha = alpha;
-      ctx.lineWidth = width;
-      if (segs) {
-        ctx.textAlign = "left";
-        for (const s of segs) {
-          ctx.strokeStyle = segStyle(s);
-          ctx.strokeText(s.text, s.x, l.y);
-        }
-        ctx.textAlign = "center";
-      } else {
-        ctx.strokeStyle = lineStyle as string | CanvasGradient;
-        ctx.strokeText(text, cx, l.y);
-      }
-    };
-
-    if (!spec.on) {
-      // off state: pale glass tube + glass sheen
-      strokeLine(
-        style((c) => mixHex(c.tube, "#544E5C", 0.62)),
-        (s) => mixHex(s.tube, "#544E5C", 0.62),
-        l.tube,
-        0.96 * alphaMul
-      );
-      strokeLine(
-        style((c) => mixHex(c.tube, "#FFFFFF", 0.35)),
-        (s) => mixHex(s.tube, "#FFFFFF", 0.35),
-        l.tube * 0.22,
-        0.5 * alphaMul
-      );
-      continue;
-    }
-
-    // layer 1 — wide colored halo
-    ctx.shadowColor = shadowCol;
-    ctx.shadowBlur = l.tube * 6.5;
-    strokeLine(
-      style((c) => c.glow),
-      (s) => s.glow,
-      l.tube * 1.18,
-      wallC.haloA * alphaMul
-    );
-    strokeLine(
-      style((c) => c.glow),
-      (s) => s.glow,
-      l.tube * 1.18,
-      wallC.haloA * alphaMul
-    );
-
-    // layer 2 — tight halo
-    ctx.shadowBlur = l.tube * 2.1;
-    strokeLine(
-      style((c) => c.tube),
-      (s) => s.tube,
-      l.tube,
-      wallC.halo2A * alphaMul
-    );
-
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = "transparent";
-
-    if (!opts.simple) {
-      // layer 3 — glass tube body
-      strokeLine(
-        style((c) => c.tube),
-        (s) => s.tube,
-        l.tube,
-        alphaMul
-      );
-
-      // layer 4 — bright core
-      strokeLine(
-        style((c) => mixHex(c.tube, "#FFFFFF", 0.6)),
-        (s) => mixHex(s.tube, "#FFFFFF", 0.6),
-        l.tube * 0.52,
-        alphaMul
-      );
-
-      // layer 5 — hot filament
-      strokeLine(
-        style((c) => mixHex(c.tube, "#FFFFFF", 0.88)),
-        (s) => mixHex(s.tube, "#FFFFFF", 0.88),
-        l.tube * 0.2,
-        0.95 * alphaMul
-      );
-    }
-  }
-  ctx.restore();
-}
-
-/* ---------------- floor reflection (night wall only) ---------------- */
+/* ---------------- floor reflection (dark backgrounds) ---------------- */
 
 function drawReflection(
   ctx: CanvasRenderingContext2D,
+  neonCanvas: HTMLCanvasElement,
   layout: NeonLayout,
   cw: number,
   ch: number,
-  spec: NeonSpec
+  dpr: number
 ): void {
-  const reflectH = Math.min(ch * 0.16, 70);
-  if (reflectH <= 0) return;
-  ctx.save();
-  // clip to the reflection band so tall signs never overflow the canvas edge
-  ctx.beginPath();
-  ctx.rect(0, layout.bottom, cw, reflectH);
-  ctx.clip();
-  // mirror around the bottom of the design
-  ctx.translate(0, 2 * layout.bottom + 4);
-  ctx.scale(1, -1);
-  drawSignPasses(ctx, layout, cw, spec, { simple: true, alphaMul: 0.14 });
-  ctx.restore();
+  const bandH = Math.min(ch * 0.16, 80);
+  if (bandH <= 4) return;
+  const devW = Math.max(2, Math.round(cw * dpr));
+  const bandDev = Math.max(2, Math.round(bandH * dpr));
 
-  // fade the reflection out
-  const g = ctx.createLinearGradient(0, layout.bottom, 0, layout.bottom + reflectH);
-  const base = WALL.night.bottom;
-  g.addColorStop(0, withAlpha(base, 0.15));
-  g.addColorStop(1, withAlpha(base, 1));
-  ctx.fillStyle = g;
-  ctx.fillRect(0, layout.bottom, cw, reflectH + 8);
+  const ref = document.createElement("canvas");
+  ref.width = devW;
+  ref.height = bandDev;
+  const rctx = ref.getContext("2d");
+  if (!rctx) return;
+
+  const srcY = Math.max(0, Math.round((layout.bottom - bandH) * dpr));
+  rctx.save();
+  rctx.scale(1, -1);
+  rctx.drawImage(neonCanvas, 0, srcY, devW, bandDev, 0, -bandDev, devW, bandDev);
+  rctx.restore();
+
+  // fade the reflection out toward the bottom
+  rctx.globalCompositeOperation = "destination-in";
+  const g = rctx.createLinearGradient(0, 0, 0, bandDev);
+  g.addColorStop(0, "rgba(0,0,0,0.32)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  rctx.fillStyle = g;
+  rctx.fillRect(0, 0, devW, bandDev);
+
+  ctx.save();
+  if (supportsFilter()) ctx.filter = `blur(${(2 * dpr).toFixed(1)}px)`;
+  ctx.globalAlpha = 0.6;
+  ctx.drawImage(ref, 0, 0, ref.width, ref.height, 0, layout.bottom, cw, bandH);
+  ctx.filter = "none";
+  ctx.restore();
 }
 
 /* ---------------- final composite ---------------- */
@@ -594,36 +737,56 @@ export function drawNeon(
   spec: NeonSpec,
   opts: DrawOptions = {}
 ): NeonLayout {
-  const brightness = spec.on
-    ? (opts.brightness ?? 1) * (spec.wall === "night" ? 1 : 0.94)
-    : 1;
+  const dpr = opts.dpr ?? 1;
+  const t = opts.tSec ?? 0;
+  const bgDef = resolveBackground(spec.background ?? { id: "brick" });
+  const dark = bgDef.dark;
+  const mode = getMode(spec.mode);
 
   ctx.save();
-  ctx.clearRect(0, 0, cw, ch);
-  drawWall(ctx, cw, ch, spec.wall, spec.on ? ambientGlowColor(spec) : undefined);
+  // 1. background
+  drawBackground(ctx, cw, ch, bgDef);
 
+  // 2. layout
   const layout = layoutSign(ctx, cw, ch, spec, opts);
 
-  if (spec.on && spec.wall === "night") {
-    drawReflection(ctx, layout, cw, ch, { ...spec, on: true });
+  // 3. colors for this frame
+  const frame = resolveFrameColors(spec, layout, t);
+
+  // 4. ambient wall light + vignette
+  drawVignette(ctx, cw, ch, dark);
+  if (spec.on) drawAmbient(ctx, cw, ch, frame.dominantGlow, dark);
+
+  // 5. the sign on its own transparent layer
+  const neonCtx = scratchCtx("neon", cw, ch, dpr);
+  const neonCanvas = getScratch("neon", cw, ch, dpr);
+  if (neonCtx && neonCanvas) {
+    if (spec.on) {
+      drawLitSign(neonCtx, cw, ch, dpr, spec.fontId, mode, layout, frame, dark);
+    } else {
+      drawOffSign(neonCtx, spec.fontId, layout, frame, dark);
+    }
+
+    // 6. reflection below the sign (dark backgrounds, powered on)
+    if (spec.on && dark) {
+      drawReflection(ctx, neonCanvas, layout, cw, ch, dpr);
+    }
+
+    // 7. composite the sign
+    ctx.globalAlpha = 1;
+    ctx.drawImage(neonCanvas, 0, 0, neonCanvas.width, neonCanvas.height, 0, 0, cw, ch);
   }
-
-  drawSignPasses(ctx, layout, cw, spec, {
-    alphaMul: brightness,
-  });
-
   ctx.restore();
   return layout;
 }
 
-/* ---------------- image export ---------------- */
+/* ---------------- PNG / JPEG export ---------------- */
 
 export interface ExportResult {
   dataUrl: string;
   layout: NeonLayout;
 }
 
-/** Render the design at high quality and return a data URL */
 export function exportNeonImage(
   spec: NeonSpec,
   options: {
@@ -631,6 +794,7 @@ export function exportNeonImage(
     height?: number;
     type?: "image/png" | "image/jpeg";
     quality?: number;
+    tSec?: number;
   } = {}
 ): ExportResult | null {
   if (typeof document === "undefined") return null;
@@ -642,41 +806,154 @@ export function exportNeonImage(
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  const layout = drawNeon(ctx, cw, ch, spec, { placeholder: "NEON" });
+  const layout = drawNeon(ctx, cw, ch, spec, {
+    placeholder: "NEON",
+    tSec: options.tSec ?? 0,
+    dpr: 1,
+  });
   const type = options.type ?? "image/png";
   const dataUrl = canvas.toDataURL(type, options.quality ?? 0.92);
   return { dataUrl, layout };
 }
 
-/** Download a PNG of the design in the browser */
-export function downloadNeonPng(spec: NeonSpec, label: string): boolean {
-  const res = exportNeonImage(spec, { width: 1600, height: 1000, type: "image/png" });
-  if (!res) return false;
-  const a = document.createElement("a");
-  a.href = res.dataUrl;
-  const slug =
+/* ---------------- GIF export (animated modes) ---------------- */
+
+interface GifFrame {
+  t: number;
+  delayMs: number;
+}
+
+export function isAnimatedSpec(spec: NeonSpec): boolean {
+  return isAnimatedMode(getMode(spec.mode));
+}
+
+/**
+ * Export the design as an animated GIF. Flow mode renders one full sweep,
+ * cycle mode renders every color with its hold + crossfade.
+ */
+export async function exportNeonGif(
+  spec: NeonSpec,
+  options: {
+    width?: number;
+    height?: number;
+    onProgress?: (done: number, total: number) => void;
+  } = {}
+): Promise<Blob | null> {
+  if (typeof document === "undefined") return null;
+  const { GIFEncoder, quantize, applyPalette } = await import("gifenc");
+
+  const mode = getMode(spec.mode);
+  if (!isAnimatedMode(mode)) return null;
+
+  // make sure assets are ready
+  const bgDef = resolveBackground(spec.background ?? { id: "brick" });
+  await ensureBackgroundLoaded(bgDef);
+  await ensureFontsLoaded();
+
+  const cw = options.width ?? 900;
+  const ch = options.height ?? 560;
+  const canvas = document.createElement("canvas");
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+
+  // ---- build the frame plan ----
+  const frames: GifFrame[] = [];
+  if (mode === "flow") {
+    const speed = Math.min(3, Math.max(0.25, spec.flowSpeed ?? 1));
+    const cycle = 8 / speed; // seconds for one full sweep
+    const n = 48;
+    for (let i = 0; i < n; i++) {
+      frames.push({ t: (i * cycle) / n, delayMs: Math.max(20, Math.round((cycle * 1000) / n)) });
+    }
+  } else {
+    // cycle: one long frame per hold + short frames across the fade
+    const ids = (spec.cycleColors ?? []).filter(Boolean);
+    const hold = Math.max(0.2, spec.cycleHold ?? 1);
+    const fade = Math.max(0, spec.cycleFade ?? 0.8);
+    const N = Math.max(1, ids.length);
+    const fadeSteps = fade > 0.01 ? 12 : 0;
+    for (let i = 0; i < N; i++) {
+      const t0 = i * (hold + fade);
+      frames.push({ t: t0 + hold * 0.5, delayMs: Math.min(6000, Math.round(hold * 1000)) });
+      for (let k = 1; k <= fadeSteps; k++) {
+        frames.push({
+          t: t0 + hold + (k / (fadeSteps + 1)) * fade,
+          delayMs: Math.max(20, Math.round((fade * 1000) / (fadeSteps + 1))),
+        });
+      }
+    }
+  }
+
+  const gif = GIFEncoder();
+  const total = frames.length;
+  for (let i = 0; i < total; i++) {
+    const f = frames[i];
+    drawNeon(ctx, cw, ch, spec, { placeholder: "NEON", tSec: f.t, dpr: 1 });
+    const { data } = ctx.getImageData(0, 0, cw, ch);
+    const palette = quantize(data, 256, { format: "rgb565" });
+    const index = applyPalette(data, palette, "rgb565");
+    gif.writeFrame(index, cw, ch, { palette, delay: f.delayMs });
+    options.onProgress?.(i + 1, total);
+    // let the UI breathe between frames
+    if (i % 8 === 0) await new Promise((r) => setTimeout(r, 0));
+  }
+  gif.finish();
+  return new Blob([gif.bytesView()], { type: "image/gif" });
+}
+
+/* ---------------- download ---------------- */
+
+function slugify(label: string): string {
+  return (
     label
       .trim()
+      .toLowerCase()
       .replace(/\s+/g, "-")
-      .replace(/[^\p{L}\p{N}-]/gu, "")
-      .slice(0, 40) || "neon-sign";
-  a.download = `neon-${slug}.png`;
+      .replace(/[^a-z0-9-]/g, "")
+      .slice(0, 40) || "neon-sign"
+  );
+}
+
+function triggerDownload(href: string, filename: string): void {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  return true;
+}
+
+/** Download PNG (static modes) or GIF (flow / cycle). Returns what was downloaded. */
+export async function downloadNeonFile(spec: NeonSpec, label: string): Promise<"png" | "gif" | null> {
+  const base = `printoo-neon-${slugify(label)}`;
+  if (isAnimatedSpec(spec)) {
+    const bgDef = resolveBackground(spec.background ?? { id: "brick" });
+    await ensureBackgroundLoaded(bgDef);
+    const blob = await exportNeonGif(spec, { width: 900, height: 560 });
+    if (!blob) return null;
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, `${base}.gif`);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return "gif";
+  }
+  const res = exportNeonImage(spec, { width: 1600, height: 1000, type: "image/png" });
+  if (!res) return null;
+  triggerDownload(res.dataUrl, `${base}.png`);
+  return "png";
 }
 
 /* ---------------- physical size estimate ---------------- */
 
 export function estimateSizeCm(
   widthCm: number,
-  layout: NeonLayout
+  layout: { width: number; height: number }
 ): { widthCm: number; heightCm: number } {
   if (layout.width <= 0) return { widthCm, heightCm: 0 };
   return {
     widthCm,
-    heightCm: Math.round((widthCm * layout.height) / layout.width),
+    heightCm: Math.max(8, Math.round((widthCm * layout.height) / layout.width)),
   };
 }
 

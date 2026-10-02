@@ -95,3 +95,34 @@ E2E verified (agent-browser):
 
 Stage Summary:
 - Site is now a clean embeddable English neon studio: designer + 12 presets only, light/dark, single-button controls, richer fonts/colors/modes, mobile floating live preview
+
+---
+Task ID: 12
+Agent: main
+Task: PrintooNeon v3 — animated color modes (Flow / Per-Letter / Cycle), 27 self-hosted fonts + searchable picker, backgrounds, GIF export, GitHub repo
+
+Work Log:
+- GitHub: created repo AbstractAxisX/PrintooNeon (public), pushed pre-change state first per user mandate, .gitignore extended (db/, tool-results/, download/, examples/, tests/, mini-services/, upload/)
+- Fonts: 27 display fonts + 4 Inter weights downloaded as woff2 from Google Fonts to /public/fonts (self-hosted, @font-face in globals.css — P0 CDN dependency eliminated), categories (script/hand/display/bold/clean/elegant), src/lib/fonts.ts registry + ensureFontsLoaded
+- Engine v3 (src/lib/neon.ts rewrite): 4 color modes — solid / flow (animated RGB sweep across letters, 2-5 colors, speed slider) / perLetter (click letters to paint, brush separate from base) / cycle (one color at a time, hold N s + smoothstep crossfade, up to 8 colors, hold/fade sliders)
+- Render pipeline: sign drawn on transparent layer (light strokes → ctx.filter blur bloom ×3 additive passes → tube body → hot core+filament with 'lighter'), composited over background + ambient wall tint + vignette; shadowBlur per-glyph fallback when ctx.filter unsupported; mirrored floor reflection w/ fade mask + blur on dark bgs; off-state pale glass; dpr-aware scratch canvases (size-keyed cache); rAF loop ~40fps cap for animated modes + IntersectionObserver pause when offscreen
+- Backgrounds: 4 AI-generated wall photos (brick/concrete/wood/plaster, z-ai image CLI, JPG q76) + 6 solid presets + custom color input; background spec in design, baked into PNG/GIF exports; day/night + flicker REMOVED (power on/off kept)
+- GIF export via gifenc (dynamic import, rgb565 quantize per frame): flow = 48 frames/full sweep, cycle = 1 long-delay frame per hold + 12 fade frames; downloadNeonFile → PNG (static modes) or GIF (animated), English filenames printoo-neon-*.png/gif; types in src/types/gifenc.d.ts
+- UI: FontPicker (popover combobox w/ search, category headers, live font samples, grid); mode cards w/ icons + blurb; ColorPalette/ColorListPicker/ColorChipList (toggle add/remove chips); LetterPainter (char chips w/ glow + canvas click hit-testing w/ hover highlight); BackgroundPicker (thumbs + solids + custom); flow speed / cycle hold+fade sliders (shadcn Slider); brushColorId separated from base colorId (unpainted letters keep base)
+- Store: design-store v3 (new fields, version 3, key printoo-neon-draft); OrderDialog sends mode/backgroundId/configJson (full design config); prisma schema: dropped colorId2/wallMode, added backgroundId/configJson; API validates configJson shape (mode enum, flow≤5/cycle≤8 color lists)
+- Gallery: 12 presets using new modes + backgrounds (flow/cycle/perLetter showcases), live animating thumbnails, multi-dot color indicators
+- Badge contrast fix (light mode: text-accent-foreground), fps throttle 24ms, mini floating preview verified w/ animated modes
+
+E2E verified (agent-browser + VLM):
+- 0 console/page errors, 0 hydration warnings, lint 0/0
+- Solid renders (pixel-sampled); Flow animates (7734/17761 center pixels changed in 600ms); Cycle crossfades (81% changed in 1.5s); Per-letter: canvas click + chip click paint correctly (indices verified across spaces + multi-line), brush≠base verified, toggle-unpaint works
+- Font picker: search "mono"→Monoton, "bungee"→Bungee selected + persisted; 27 fonts render in own typefaces
+- Background switch (wood pixels verified), custom color #20403a renders at corner
+- GIF downloads E2E: printoo-neon-good-vibes.gif (flow, 48f) + printoo-neon-stay-wild.gif (cycle); PNG: printoo-neon-stay-wild.png (1600×1000)
+- Order E2E: NE-2051 stored (mode=flow, fontName=Bungee, backgroundId=brick, configJson 236B, JPEG 287KB); 500 fixed (stale Prisma client after db:push → dev server restart via .zscripts/dev.sh)
+- Mobile 390px: mini preview shows when scrolled past (bottom<72), hides on return; no horizontal scroll; power off = 0 lit pixels
+- VLM QA: 9/10 overall — "convincing neon tube effect… glow interacts realistically", layout "exceptionally clean"; minor badge contrast fixed + re-verified
+
+Stage Summary:
+- PrintooNeon live at / — 4 color modes (2 animated), 27 self-hosted fonts, 23 colors, background picker, PNG+GIF export, orders w/ full config
+- Repo: https://github.com/AbstractAxisX/PrintooNeon (initial state pushed pre-change, final push after this task)

@@ -21,13 +21,11 @@ model Order {
   fontName     String
   colorId      String
   colorName    String
-  colorId2     String?
-  colorName2   String?
-  mode         String   @default("solid") // solid | gradient | duo | rainbow
+  mode         String   @default("solid") // solid | flow | perLetter | cycle
   widthCm      Int
   heightCm     Float? // estimated height
-  wallMode     String? // night | day
-  onState      Boolean  @default(true)
+  backgroundId String? // wall photo or solid background id
+  configJson   String? // full design config JSON (colors, timings, background, letter colors)
 
   imageData    String? // preview image data URL (JPEG)
 

@@ -7,12 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import {
-  Moon,
-  Sun,
   Power,
-  Zap,
   Download,
   Ruler,
   Type,
@@ -20,54 +18,70 @@ import {
   PenLine,
   ShoppingBag,
   Loader2,
-  Droplets,
+  Droplet,
+  Waves,
+  Paintbrush,
+  Repeat,
+  Image as ImageIcon,
 } from "lucide-react";
 import { NeonCanvas } from "./NeonCanvas";
 import { OrderDialog } from "./OrderDialog";
+import { FontPicker } from "./FontPicker";
+import { ColorPalette, ColorListPicker, ColorChipList } from "./ColorControls";
+import { LetterPainter } from "./LetterPainter";
+import { BackgroundPicker } from "./BackgroundPicker";
 import {
-  NEON_COLORS,
-  NEON_FONTS,
   COLOR_MODES,
-  downloadNeonPng,
+  downloadNeonFile,
   estimateSizeCm,
   getMode,
+  isAnimatedMode,
   type NeonSpec,
   type NeonLayout,
   type ColorMode,
 } from "@/lib/neon";
+import { getColor } from "@/lib/colors";
 import {
   useDesign,
   splitLines,
   MAX_LINES,
   MAX_CHARS_PER_LINE,
   SIZE_OPTIONS,
+  FLOW_MAX_COLORS,
+  CYCLE_MAX_COLORS,
 } from "@/lib/design-store";
 import { cn } from "@/lib/utils";
 
+const MODE_ICONS: Record<ColorMode, React.ComponentType<{ className?: string }>> = {
+  solid: Droplet,
+  flow: Waves,
+  perLetter: Paintbrush,
+  cycle: Repeat,
+};
+
 export function Designer() {
   const mounted = useMounted();
+  const d = useDesign();
   const {
     text,
     fontId,
-    colorId,
-    colorId2,
     mode,
+    colorId,
+    brushColorId,
+    letterColors,
+    flowColors,
+    flowSpeed,
+    cycleColors,
+    cycleHold,
+    cycleFade,
+    backgroundId,
+    backgroundCustom,
     widthCm,
     on,
-    wall,
-    flicker,
-    setText,
-    setFont,
-    setColor,
-    setColor2,
-    setMode,
-    setSize,
-    setOn,
-    setWall,
-    setFlicker,
-  } = useDesign();
+  } = d;
 
   const [orderOpen, setOrderOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [miniVisible, setMiniVisible] = useState(false);
 
@@ -82,21 +96,40 @@ export function Designer() {
     () => ({
       lines: splitLines(text),
       fontId,
-      colorId,
-      colorId2,
       mode,
+      colorId,
+      letterColors,
+      flowColors,
+      flowSpeed,
+      cycleColors,
+      cycleHold,
+      cycleFade,
+      background: { id: backgroundId, customColor: backgroundCustom },
       on,
-      wall,
-      flicker,
     }),
-    [text, fontId, colorId, colorId2, mode, on, wall, flicker]
+    [
+      text,
+      fontId,
+      mode,
+      colorId,
+      letterColors,
+      flowColors,
+      flowSpeed,
+      cycleColors,
+      cycleHold,
+      cycleFade,
+      backgroundId,
+      backgroundCustom,
+      on,
+    ]
   );
 
   const lines = splitLines(text);
   const hasText = lines.some((l) => l.trim().length > 0);
   const totalChars = text.length;
+  const maxChars = MAX_LINES * (MAX_CHARS_PER_LINE + 1) - 1;
   const overflowLine = lines.findIndex((l) => l.length > MAX_CHARS_PER_LINE);
-  const usesSecondColor = mode === "gradient" || mode === "duo";
+  const animated = isAnimatedMode(mode) && on;
 
   /* ---- floating mini preview (mobile): show when the real preview scrolled away ---- */
   useEffect(() => {
@@ -131,113 +164,93 @@ export function Designer() {
 
   const estimate = useMemo(() => {
     if (!dims || dims.w <= 0) return null;
-    return estimateSizeCm(widthCm, { width: dims.w, height: dims.h, line: [], bottom: 0 });
+    return estimateSizeCm(widthCm, { width: dims.w, height: dims.h });
   }, [dims, widthCm]);
 
-  function handleDownload() {
-    const ok = downloadNeonPng(spec, hasText ? text : "neon");
-    if (ok) toast.success("High-quality image downloaded.");
-    else toast.error("Could not download the image.");
+  async function handleDownload() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const kind = await downloadNeonFile(spec, hasText ? text : "neon");
+      if (kind === "gif") toast.success("Animated GIF downloaded.");
+      else if (kind === "png") toast.success("High-quality image downloaded.");
+      else toast.error("Could not export the design.");
+    } catch {
+      toast.error("Could not export the design.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const activeColor = NEON_COLORS.find((c) => c.id === colorId) ?? NEON_COLORS[0];
-  const activeColor2 = NEON_COLORS.find((c) => c.id === colorId2) ?? NEON_COLORS[1];
+  /** paint / unpaint a letter (canvas click or chip click) */
+  const paintLetter = useCallback(
+    (index: number) => {
+      d.paintLetter(index, letterColors[index] === brushColorId ? null : brushColorId);
+    },
+    [d, letterColors, brushColorId]
+  );
+
+  const activeMode = getMode(mode);
+  const activeColor = getColor(colorId);
+  const activeBrush = getColor(brushColorId);
 
   return (
     <section id="designer" className="scroll-mt-24">
       {/* ---------- section header ---------- */}
       <div className="mb-8 text-center">
-        <Badge variant="outline" className="mb-3 rounded-full border-primary/30 bg-primary/5 px-3 py-1 text-[11.5px] font-semibold text-primary">
-          <Zap className="mr-1 h-3 w-3" />
+        <Badge
+          variant="outline"
+          className="mb-3 rounded-full border-primary/30 bg-primary/5 px-3 py-1 text-[11.5px] font-semibold text-accent-foreground dark:text-primary"
+        >
+          <Waves className="mr-1 h-3 w-3" />
           Live design studio
         </Badge>
         <h1 className="section-title">Create your neon sign</h1>
         <p className="mx-auto mt-3 max-w-xl text-[14px] leading-7 text-muted-foreground">
-          Type your text, pick a font and color, and watch it light up on the
-          wall in real time — rendered like real glass-tube neon.
+          Type your text, pick a font, paint the colors — animated RGB flow,
+          per-letter colors or a soft color cycle, rendered like real
+          glass-tube neon.
         </p>
         <div className="section-rule" />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr] lg:gap-6">
+      <div className="grid gap-5 lg:grid-cols-[1.45fr_1fr] lg:gap-6">
         {/* ================= preview ================= */}
         <Card className="min-w-0 overflow-hidden rounded-2xl border-border/70 shadow-lg shadow-black/[0.04] dark:shadow-black/30">
-          {/* toolbar above the wall — plain buttons, no toggles */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-4 py-3">
-            {/* wall: night / day */}
-            <div className="flex items-center gap-1.5" role="group" aria-label="Preview wall">
-              <button
-                type="button"
-                aria-pressed={wall === "night"}
-                onClick={() => setWall("night")}
-                className={cn(
-                  "flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition-all",
-                  wall === "night"
-                    ? "border-primary/60 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                )}
-              >
-                <Moon className="h-3.5 w-3.5" />
-                Night
-              </button>
-              <button
-                type="button"
-                aria-pressed={wall === "day"}
-                onClick={() => setWall("day")}
-                className={cn(
-                  "flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition-all",
-                  wall === "day"
-                    ? "border-primary/60 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                )}
-              >
-                <Sun className="h-3.5 w-3.5" />
-                Day
-              </button>
-            </div>
-
-            {/* power & flicker — single press buttons */}
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                aria-pressed={flicker}
-                disabled={!on}
-                onClick={() => setFlicker(!flicker)}
-                title={flicker ? "Turn flicker off" : "Turn flicker on (like real neon)"}
-                className={cn(
-                  "flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition-all",
-                  !on && "cursor-not-allowed opacity-40",
-                  flicker && on
-                    ? "border-primary/60 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                )}
-              >
-                <Zap className="h-3.5 w-3.5" />
-                Flicker
-              </button>
-              <button
-                type="button"
-                aria-pressed={on}
-                onClick={() => setOn(!on)}
-                title={on ? "Switch the sign off" : "Switch the sign on"}
-                className={cn(
-                  "flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition-all",
-                  on
-                    ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/25"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                )}
-              >
-                <Power className="h-3.5 w-3.5" />
-                {on ? "On" : "Off"}
-              </button>
-            </div>
+          {/* toolbar — power button (single press) */}
+          <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-4 py-3">
+            <span className="flex items-center gap-2 text-[12.5px] font-semibold text-muted-foreground">
+              <ImageIcon className="h-4 w-4 text-primary/70" />
+              {activeMode === "flow" || activeMode === "cycle" ? "Live animation" : "Live preview"}
+            </span>
+            <button
+              type="button"
+              aria-pressed={on}
+              onClick={() => d.setOn(!on)}
+              title={on ? "Switch the sign off" : "Switch the sign on"}
+              className={cn(
+                "flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition-all",
+                on
+                  ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                  : "border-border text-muted-foreground hover:bg-muted"
+              )}
+            >
+              <Power className="h-3.5 w-3.5" />
+              {on ? "On" : "Off"}
+            </button>
           </div>
 
           {/* the wall */}
           <div ref={previewRef} className="bg-dots scroll-mt-20 bg-muted/20 p-3 sm:p-5">
             <div className="overflow-hidden rounded-xl shadow-2xl shadow-black/20 ring-1 ring-black/10 dark:ring-white/5">
               {mounted ? (
-                <NeonCanvas spec={spec} aspect={1.5} onLayout={handleLayout} />
+                <NeonCanvas
+                  spec={spec}
+                  aspect={1.5}
+                  onLayout={handleLayout}
+                  interactive={activeMode === "perLetter"}
+                  onGlyphClick={paintLetter}
+                />
               ) : (
                 <div className="grid aspect-[3/2] w-full place-items-center bg-[#181320]">
                   <Loader2 className="h-7 w-7 animate-spin text-white/40" />
@@ -263,11 +276,19 @@ export function Designer() {
               <Button
                 variant="outline"
                 onClick={handleDownload}
-                disabled={!hasText}
+                disabled={!hasText || saving}
                 className="gap-2 rounded-lg"
               >
-                <Download className="h-4 w-4" />
-                Save image
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                {animated
+                  ? saving
+                    ? "Rendering GIF…"
+                    : "Save GIF"
+                  : "Save image"}
               </Button>
               <Button
                 onClick={() => setOrderOpen(true)}
@@ -284,7 +305,7 @@ export function Designer() {
         {/* ================= controls ================= */}
         <Card className="min-w-0 rounded-2xl border-border/70">
           <CardContent className="flex flex-col gap-7 p-5 sm:p-6">
-            {/* text */}
+            {/* ---- text ---- */}
             <div>
               <div className="field-label">
                 <PenLine className="h-4 w-4 text-primary/80" />
@@ -295,200 +316,249 @@ export function Designer() {
               </div>
               <Textarea
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => d.setText(e.target.value)}
                 placeholder={"Your text…\ne.g. Good Vibes"}
                 rows={3}
                 className="resize-none rounded-xl text-[15px] leading-8"
-                maxLength={MAX_LINES * (MAX_CHARS_PER_LINE + 1) - 1}
+                maxLength={maxChars}
               />
               <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[11px] text-muted-foreground">
-                <span>{totalChars} / {MAX_LINES * (MAX_CHARS_PER_LINE + 1) - 1} characters</span>
+                <span>
+                  {totalChars} / {maxChars} characters
+                </span>
                 {!hasText && (
                   <span className="text-primary/70">Type something to begin ✨</span>
                 )}
                 {overflowLine >= 0 && (
                   <span className="font-medium text-destructive">
-                    Line {overflowLine + 1} is over {MAX_CHARS_PER_LINE} chars — it will be trimmed in the preview
+                    Line {overflowLine + 1} is over {MAX_CHARS_PER_LINE} chars — it will be
+                    trimmed in the preview
                   </span>
                 )}
               </div>
             </div>
 
-            {/* font — grid, no horizontal scroll */}
+            {/* ---- font (searchable picker) ---- */}
             <div>
               <div className="field-label">
                 <Type className="h-4 w-4 text-primary/80" />
                 Font
                 <span className="ml-auto text-[11px] font-normal text-muted-foreground">
-                  {NEON_FONTS.find((f) => f.id === fontId)?.name}
+                  27 typefaces · searchable
                 </span>
               </div>
-              <div
-                className="grid grid-cols-3 gap-2 sm:grid-cols-4"
-                role="radiogroup"
-                aria-label="Font choice"
-              >
-                {NEON_FONTS.map((f) => {
-                  const active = f.id === fontId;
-                  return (
-                    <button
-                      key={f.id}
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setFont(f.id)}
-                      className={cn(
-                        "relative flex min-w-0 flex-col items-center justify-center rounded-xl border px-2 py-3 transition-all duration-200",
-                        active
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-border hover:border-primary/40 hover:bg-muted/50"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "truncate text-[17px] leading-snug transition-colors",
-                          active ? "text-primary" : "text-foreground/75"
-                        )}
-                        style={{
-                          fontFamily: `"${f.family}", "Inter", sans-serif`,
-                          fontWeight: f.weight,
-                        }}
-                      >
-                        Neon
-                      </span>
-                      <span className="mt-1 w-full truncate text-center text-[10.5px] text-muted-foreground">
-                        {f.name}
-                      </span>
-                      {active && (
-                        <span
-                          className="pointer-events-none absolute inset-x-4 bottom-1 h-0.5 rounded-full"
-                          style={{
-                            background: activeColor.tube,
-                            boxShadow: `0 0 8px ${activeColor.glow}`,
-                          }}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <FontPicker value={fontId} onChange={d.setFont} />
             </div>
 
-            {/* color mode */}
+            {/* ---- color mode ---- */}
             <div>
               <div className="field-label">
-                <Droplets className="h-4 w-4 text-primary/80" />
+                <Waves className="h-4 w-4 text-primary/80" />
                 Color mode
               </div>
-              <div
-                className="grid grid-cols-4 gap-1.5"
-                role="radiogroup"
-                aria-label="Color mode"
-              >
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Color mode">
                 {COLOR_MODES.map((m) => {
-                  const active = getMode(mode) === m.id;
+                  const Icon = MODE_ICONS[m.id];
+                  const active = activeMode === m.id;
                   return (
                     <button
                       key={m.id}
+                      type="button"
                       role="radio"
                       aria-checked={active}
-                      onClick={() => setMode(m.id)}
+                      onClick={() => d.setMode(m.id)}
                       className={cn(
-                        "rounded-lg border py-2.5 text-[12.5px] font-bold transition-all",
+                        "flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition-all duration-200",
                         active
                           ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/30"
                           : "border-border text-foreground/70 hover:border-primary/40 hover:bg-muted/50"
                       )}
                     >
-                      {m.name}
+                      <Icon className={cn("h-5 w-5", active ? "text-primary-foreground" : "text-primary/70")} />
+                      <span className="text-[12px] font-bold leading-tight">{m.name}</span>
                     </button>
                   );
                 })}
               </div>
+              <p className="mt-2 text-[11.5px] leading-5 text-muted-foreground">
+                {COLOR_MODES.find((m) => m.id === activeMode)?.blurb}
+              </p>
             </div>
 
-            {/* primary color */}
-            <div>
-              <div className="field-label">
-                <Palette className="h-4 w-4 text-primary/80" />
-                {usesSecondColor ? "Main color" : "Neon color"}
-                <span className="ml-auto text-[11px] font-normal text-muted-foreground">
-                  {activeColor.name}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Neon color">
-                {NEON_COLORS.map((c) => {
-                  const active = c.id === colorId;
-                  return (
-                    <button
-                      key={c.id}
-                      role="radio"
-                      aria-checked={active}
-                      aria-label={c.name}
-                      title={c.name}
-                      onClick={() => setColor(c.id)}
-                      className={cn(
-                        "relative h-10 w-10 rounded-full border-2 transition-transform duration-200",
-                        active
-                          ? "scale-110 border-foreground/70 dark:border-white/80"
-                          : "border-transparent hover:scale-105"
-                      )}
-                      style={{
-                        background: `radial-gradient(circle at 38% 35%, ${c.tube}, ${c.glow} 70%)`,
-                        boxShadow: active
-                          ? `0 0 16px 2px ${c.glow}, 0 0 4px 1px ${c.tube} inset`
-                          : `0 0 8px 0 ${c.glow}55`,
-                      }}
-                    >
-                      <span className="absolute inset-[30%] rounded-full bg-white/70 mix-blend-screen" />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* second color (gradient / two-tone only) */}
-            {usesSecondColor && (
+            {/* ---- mode-specific controls ---- */}
+            {activeMode === "solid" && (
               <div>
                 <div className="field-label">
                   <Palette className="h-4 w-4 text-primary/80" />
-                  Second color
+                  Neon color
                   <span className="ml-auto text-[11px] font-normal text-muted-foreground">
-                    {activeColor2.name}
+                    {activeColor.name}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Second neon color">
-                  {NEON_COLORS.map((c) => {
-                    const active = c.id === colorId2;
-                    return (
-                      <button
-                        key={c.id}
-                        role="radio"
-                        aria-checked={active}
-                        aria-label={c.name}
-                        title={c.name}
-                        onClick={() => setColor2(c.id)}
-                        className={cn(
-                          "relative h-10 w-10 rounded-full border-2 transition-transform duration-200",
-                          active
-                            ? "scale-110 border-foreground/70 dark:border-white/80"
-                            : "border-transparent hover:scale-105"
-                        )}
-                        style={{
-                          background: `radial-gradient(circle at 38% 35%, ${c.tube}, ${c.glow} 70%)`,
-                          boxShadow: active
-                            ? `0 0 16px 2px ${c.glow}, 0 0 4px 1px ${c.tube} inset`
-                            : `0 0 8px 0 ${c.glow}55`,
-                        }}
-                      >
-                        <span className="absolute inset-[30%] rounded-full bg-white/70 mix-blend-screen" />
-                      </button>
-                    );
-                  })}
+                <ColorPalette value={colorId} onChange={d.setColor} />
+              </div>
+            )}
+
+            {activeMode === "flow" && (
+              <div className="space-y-3.5">
+                <div>
+                  <div className="field-label">
+                    <Palette className="h-4 w-4 text-primary/80" />
+                    Flow colors
+                    <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {flowColors.length} / {FLOW_MAX_COLORS} picked
+                    </span>
+                  </div>
+                  <ColorChipList
+                    ids={flowColors}
+                    onRemove={(id) => d.setFlowColors(flowColors.filter((x) => x !== id))}
+                    emptyHint="Pick at least two colors below — they will sweep across the sign."
+                  />
+                  <div className="mt-2.5">
+                    <ColorListPicker
+                      ids={flowColors}
+                      max={FLOW_MAX_COLORS}
+                      onChange={d.setFlowColors}
+                      ariaLabel="Flow colors"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="field-label">
+                    <Waves className="h-4 w-4 text-primary/80" />
+                    Flow speed
+                    <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {flowSpeed.toFixed(2).replace(/\.?0+$/, "")}×
+                    </span>
+                  </div>
+                  <Slider
+                    value={[flowSpeed]}
+                    min={0.25}
+                    max={3}
+                    step={0.25}
+                    onValueChange={(v) => d.setFlowSpeed(v[0] ?? 1)}
+                    aria-label="Flow speed"
+                  />
+                  <div className="mt-1 flex justify-between text-[10.5px] text-muted-foreground">
+                    <span>Calm</span>
+                    <span>Fast RGB</span>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* size */}
+            {activeMode === "perLetter" && (
+              <div className="space-y-3.5">
+                <div>
+                  <div className="field-label">
+                    <Paintbrush className="h-4 w-4 text-primary/80" />
+                    Letter painter
+                  </div>
+                  <LetterPainter
+                    text={text}
+                    letterColors={letterColors}
+                    brushColorId={brushColorId}
+                    onPaint={paintLetter}
+                    onClear={d.clearLetterColors}
+                  />
+                </div>
+                <div>
+                  <div className="field-label">
+                    <Palette className="h-4 w-4 text-primary/80" />
+                    Paint color
+                    <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {activeBrush.name}
+                    </span>
+                  </div>
+                  <ColorPalette value={brushColorId} onChange={d.setBrush} ariaLabel="Paint color" />
+                  <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                    Unpainted letters keep the base color ({activeColor.name}) — switching back
+                    to Solid mode lets you change it.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {activeMode === "cycle" && (
+              <div className="space-y-3.5">
+                <div>
+                  <div className="field-label">
+                    <Palette className="h-4 w-4 text-primary/80" />
+                    Cycle colors
+                    <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {cycleColors.length} / {CYCLE_MAX_COLORS} picked
+                    </span>
+                  </div>
+                  <ColorChipList
+                    ids={cycleColors}
+                    onRemove={(id) => d.setCycleColors(cycleColors.filter((x) => x !== id))}
+                    emptyHint="Pick colors below — the sign will fade through them one by one."
+                  />
+                  <div className="mt-2.5">
+                    <ColorListPicker
+                      ids={cycleColors}
+                      max={CYCLE_MAX_COLORS}
+                      onChange={d.setCycleColors}
+                      ariaLabel="Cycle colors"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="field-label">
+                    <Repeat className="h-4 w-4 text-primary/80" />
+                    Each color stays
+                    <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {cycleHold < 1
+                        ? `${Math.round(cycleHold * 100) / 100}s`
+                        : `${cycleHold.toFixed(1).replace(/\.0$/, "")}s`}
+                    </span>
+                  </div>
+                  <Slider
+                    value={[cycleHold]}
+                    min={0.5}
+                    max={8}
+                    step={0.5}
+                    onValueChange={(v) => d.setCycleHold(v[0] ?? 1)}
+                    aria-label="Color hold duration in seconds"
+                  />
+                </div>
+                <div>
+                  <div className="field-label">
+                    <Droplet className="h-4 w-4 text-primary/80" />
+                    Crossfade duration
+                    <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {cycleFade.toFixed(1).replace(/\.0$/, "")}s
+                    </span>
+                  </div>
+                  <Slider
+                    value={[cycleFade]}
+                    min={0.3}
+                    max={3}
+                    step={0.1}
+                    onValueChange={(v) => d.setCycleFade(v[0] ?? 0.8)}
+                    aria-label="Crossfade duration in seconds"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* ---- background ---- */}
+            <div>
+              <div className="field-label">
+                <ImageIcon className="h-4 w-4 text-primary/80" />
+                Background
+                <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                  walls or solid color
+                </span>
+              </div>
+              <BackgroundPicker
+                backgroundId={backgroundId}
+                customColor={backgroundCustom}
+                onChange={d.setBackground}
+              />
+            </div>
+
+            {/* ---- size ---- */}
             <div>
               <div className="field-label">
                 <Ruler className="h-4 w-4 text-primary/80" />
@@ -503,9 +573,10 @@ export function Designer() {
                   return (
                     <button
                       key={cm}
+                      type="button"
                       role="radio"
                       aria-checked={active}
-                      onClick={() => setSize(cm)}
+                      onClick={() => d.setSize(cm)}
                       className={cn(
                         "rounded-lg border py-2.5 text-[13px] font-bold tabular-nums transition-all",
                         active
@@ -519,8 +590,8 @@ export function Designer() {
                 })}
               </div>
               <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
-                Total width from the first to the last tube. The final size is
-                confirmed after we review your design.
+                Total width from the first to the last tube. The final size is confirmed
+                after we review your design.
               </p>
             </div>
           </CardContent>
@@ -552,7 +623,7 @@ export function Designer() {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
                 </span>
-                Live preview · tap to open
+                {animated ? "Live animation · tap to open" : "Live preview · tap to open"}
               </span>
             </button>
           </motion.div>

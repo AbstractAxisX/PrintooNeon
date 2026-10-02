@@ -4,19 +4,20 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Neon Sign Studio | Design your custom neon sign",
+  title: "Custom Neon Sign Designer",
   description:
-    "Design a real glass-tube neon sign live: type your text, choose from 16 fonts, 17 colors and 4 color modes, save the image and place your order.",
+    "Design a real glass-tube neon sign live: 27 fonts, 23 colors, animated RGB flow, per-letter painting and color-cycle modes, pick your background wall, save a PNG or animated GIF.",
   keywords: [
     "neon sign",
     "custom neon",
     "neon designer",
     "neon sign maker",
     "glass tube neon",
+    "rgb neon",
   ],
   icons: { icon: "/favicon.svg" },
   openGraph: {
-    title: "Neon Sign Studio | Design your custom neon sign",
+    title: "Custom Neon Sign Designer",
     description: "Real neon, hand-bent glass. Build yours right here.",
     type: "website",
   },
@@ -35,17 +36,7 @@ export default function RootLayout({
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        {/* UI font (Inter) + neon display fonts */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Audiowide&family=Bebas+Neue&family=Caveat:wght@700&family=Dancing+Script:wght@700&family=Great+Vibes&family=Kaushan+Script&family=Lobster&family=Monoton&family=Pacifico&family=Passion+One:wght@700&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Righteous&family=Sacramento&family=Satisfy&family=Yellowtail&display=swap"
-          rel="stylesheet"
-        />
+        {/* all fonts are self-hosted from /public/fonts — no CDN dependency */}
       </head>
       <body className="font-sans antialiased bg-background text-foreground">
         <ThemeProvider

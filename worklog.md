@@ -126,3 +126,27 @@ E2E verified (agent-browser + VLM):
 Stage Summary:
 - PrintooNeon live at / — 4 color modes (2 animated), 27 self-hosted fonts, 23 colors, background picker, PNG+GIF export, orders w/ full config
 - Repo: https://github.com/AbstractAxisX/PrintooNeon (initial state pushed pre-change, final push after this task)
+
+---
+Task ID: 13
+Agent: main
+Task: User feedback fixes — restore Gradient mode + font picker popover → inline accordion + GitHub push
+
+Work Log:
+- Gradient mode RESTORED (was dropped in v3): ColorMode now solid/gradient/flow/perLetter/cycle; engine resolveFrameColors gradient branch = per-glyph lerp(A→B) across sign width (static, smooth stops, reuses gradientPaint path); dominant glow = mix(A,B)
+- Spec/store: colorId2 + setColor2, Preset.colorId2, spec memo + dual palettes UI ("Main color"/"Second color" + live gradient preview strip), mode grid now 5 cards (grid-cols-3 sm:grid-cols-5) w/ Blend icon
+- FontPicker popover DELETED → FontAccordion.tsx: shadcn Accordion (single collapsible) inline in the controls card, trigger shows active font in its own typeface, content = search input + category-grouped grid (max-h 340 scroll), stays open while browsing so live + floating mini preview react to picks
+- drawOffSign now receives real mode (perLetter off-state keeps per-letter pale glass colors)
+- OrderDialog: gradient badge "A → B", colorId2 in payload + configJson; prisma: colorId2/colorName2 columns restored, API mode enum + colorId2 validation + names
+- Gallery: 3 gradient presets (Good Vibes rose→hotpink brick, dream big violet→ice charcoal, The Bar red→orange brick) + "Gradient" badge + 2-dot indicators
+- Store: DEFAULT_DESIGN extracted, version 4 + migrate() (v3 drafts keep all fields, gain colorId2 default, letterColors sanitized) — fixes "couldn't be migrated" console error
+
+E2E verified (agent-browser):
+- Gradient: left pixel [218,81,114] rose vs right green after switching second color (pixel + VLM confirmed blend "yellow/gold → cyan/blue"), two-palette UI clean, 5 mode cards no clipping (desktop + 390px)
+- Font accordion: expands inline (no popover element in DOM), aria-expanded, search "great"→1 result, pick applies + stays open, trigger shows picked font
+- Migration: planted v3 draft → rehydrated as v4 w/ colorId2 default + letterColors kept, 0 console errors after fresh reload
+- Order E2E gradient: NE-1809 stored (mode=gradient, Classic Rose → Neon Green, configJson colorId2=green)
+- lint 0/0; dev server restarted via .zscripts/dev.sh after db:push (fresh Prisma client)
+
+Stage Summary:
+- 5 color modes incl. restored Gradient; fonts in an inline accordion; pushed to GitHub

@@ -21,7 +21,9 @@ model Order {
   fontName     String
   colorId      String
   colorName    String
-  mode         String   @default("solid") // solid | flow | perLetter | cycle
+  colorId2     String? // gradient mode: second color
+  colorName2   String? // gradient mode: second color name
+  mode         String   @default("solid") // solid | gradient | flow | perLetter | cycle
   widthCm      Int
   heightCm     Float? // estimated height
   backgroundId String? // wall photo or solid background id

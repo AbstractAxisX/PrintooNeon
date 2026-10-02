@@ -25,7 +25,8 @@ const orderSchema = z.object({
     .max(120, "Text is too long"),
   fontId: z.string().trim().min(1).max(40),
   colorId: z.string().trim().min(1).max(40),
-  mode: z.enum(["solid", "flow", "perLetter", "cycle"]).optional(),
+  colorId2: z.string().trim().min(1).max(40).optional().nullable(),
+  mode: z.enum(["solid", "gradient", "flow", "perLetter", "cycle"]).optional(),
   widthCm: z.number().int().min(20).max(250),
   backgroundId: z.string().trim().max(60).optional().nullable(),
   configJson: z.string().max(20_000).optional().nullable(),
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
     if (typeof body?.configJson === "string" && body.configJson.length > 0) {
       try {
         const cfg = JSON.parse(body.configJson) as Record<string, unknown>;
-        const validModes = ["solid", "flow", "perLetter", "cycle"];
+        const validModes = ["solid", "gradient", "flow", "perLetter", "cycle"];
         if (cfg.mode !== undefined && !validModes.includes(String(cfg.mode))) {
           return NextResponse.json({ error: "Invalid color mode" }, { status: 400 });
         }
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
     // resolve human-readable names for admin review
     const font = NEON_FONTS.find((f) => f.id === d.fontId);
     const color = NEON_COLORS.find((c) => c.id === d.colorId);
+    const color2 = d.colorId2 ? NEON_COLORS.find((c) => c.id === d.colorId2) : undefined;
     const bg = d.backgroundId ? BACKGROUNDS.find((b) => b.id === d.backgroundId) : undefined;
 
     // unique short code with retries
@@ -107,6 +109,8 @@ export async function POST(req: NextRequest) {
         fontName: font?.name ?? d.fontId,
         colorId: d.colorId,
         colorName: color?.name ?? d.colorId,
+        colorId2: d.colorId2 ?? null,
+        colorName2: color2?.name ?? null,
         mode: d.mode ?? "solid",
         widthCm: d.widthCm,
         backgroundId: bg?.id ?? d.backgroundId ?? null,

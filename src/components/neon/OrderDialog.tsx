@@ -64,6 +64,7 @@ export function OrderDialog({
   const [copied, setCopied] = useState(false);
 
   const color = getColor(spec.colorId);
+  const color2 = getColor(spec.colorId2 ?? "ice");
   const font = getFont(spec.fontId);
   const mode = getMode(spec.mode);
   const modeName = COLOR_MODES.find((m) => m.id === mode)?.name ?? "Solid";
@@ -72,6 +73,7 @@ export function OrderDialog({
   /** human-readable summary of the full color setup */
   const colorSummary = useMemo(() => {
     if (mode === "solid") return color.name;
+    if (mode === "gradient") return `${color.name} → ${color2.name}`;
     const ids =
       mode === "flow"
         ? spec.flowColors ?? []
@@ -84,7 +86,7 @@ export function OrderDialog({
       return painted ? `${painted} painted letter${painted > 1 ? "s" : ""} · base ${color.name}` : color.name;
     }
     return `${modeName}: ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`;
-  }, [mode, spec.flowColors, spec.cycleColors, spec.letterColors, color.name, modeName]);
+  }, [mode, spec.colorId2, spec.flowColors, spec.cycleColors, spec.letterColors, color.name, color2.name, modeName]);
 
   /** full design config stored with the order (for exact reproduction) */
   const configJson = useMemo(
@@ -92,6 +94,7 @@ export function OrderDialog({
       JSON.stringify({
         mode,
         colorId: spec.colorId,
+        colorId2: spec.colorId2 ?? null,
         letterColors: spec.letterColors ?? {},
         flowColors: spec.flowColors ?? [],
         flowSpeed: spec.flowSpeed ?? 1,
@@ -140,6 +143,7 @@ export function OrderDialog({
           text: displayText,
           fontId: font.id,
           colorId: color.id,
+          colorId2: mode === "gradient" ? color2.id : null,
           mode,
           widthCm,
           backgroundId: spec.background?.id ?? "brick",

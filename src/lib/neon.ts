@@ -41,17 +41,18 @@ import { getFont, fontCss, ensureFontsLoaded } from "./fonts";
 import { resolveBackground, drawBackground, ensureBackgroundLoaded } from "./backgrounds";
 import type { BackgroundSpec } from "./backgrounds";
 
-export type ColorMode = "solid" | "flow" | "perLetter" | "cycle";
+export type ColorMode = "solid" | "gradient" | "flow" | "perLetter" | "cycle";
 
 export const COLOR_MODES: { id: ColorMode; name: string; blurb: string }[] = [
   { id: "solid", name: "Solid", blurb: "One steady neon color" },
+  { id: "gradient", name: "Gradient", blurb: "Smooth blend from one color to another" },
   { id: "flow", name: "Flow", blurb: "Animated colors sweeping like RGB strips" },
   { id: "perLetter", name: "Per Letter", blurb: "Click letters to paint each one" },
   { id: "cycle", name: "Cycle", blurb: "One color at a time, soft crossfade" },
 ];
 
 export function getMode(id?: ColorMode): ColorMode {
-  return id === "flow" || id === "perLetter" || id === "cycle" ? id : "solid";
+  return id === "gradient" || id === "flow" || id === "perLetter" || id === "cycle" ? id : "solid";
 }
 
 export function isAnimatedMode(mode: ColorMode): boolean {
@@ -66,6 +67,8 @@ export interface NeonSpec {
   mode?: ColorMode;
   /** base color (solid mode / unpainted letters / initial brush) */
   colorId: string;
+  /** second color (gradient mode) */
+  colorId2?: string;
   /** perLetter mode: character index (newlines skipped) -> colorId */
   letterColors?: Record<number, string>;
   /** flow mode: 2–5 colorIds that sweep across the sign */
@@ -296,6 +299,24 @@ function resolveFrameColors(spec: NeonSpec, layout: NeonLayout, t: number): Fram
   if (mode === "solid") {
     const c = colorOf(spec.colorId);
     return { glyph: layout.glyphs.map(() => c), uniform: true, dominantGlow: c.glow };
+  }
+
+  if (mode === "gradient") {
+    // smooth A -> B blend across the whole sign (static)
+    const A = colorOf(spec.colorId);
+    const B = colorOf(spec.colorId2 || "ice");
+    const left = layout.glyphs.length ? Math.min(...layout.glyphs.map((g) => g.x)) : 0;
+    const right = layout.glyphs.length ? Math.max(...layout.glyphs.map((g) => g.x + g.w)) : 1;
+    const span = Math.max(1, right - left);
+    const glyph = layout.glyphs.map((g) => {
+      const xn = Math.min(1, Math.max(0, (g.x + g.w / 2 - left) / span));
+      return { tube: lerpRgb(A.tube, B.tube, xn), glow: lerpRgb(A.glow, B.glow, xn) };
+    });
+    return {
+      glyph,
+      uniform: false,
+      dominantGlow: lerpRgb(A.glow, B.glow, 0.5),
+    };
   }
 
   if (mode === "cycle") {
@@ -625,12 +646,13 @@ function drawLitSign(
 function drawOffSign(
   nctx: CanvasRenderingContext2D,
   fontId: string,
+  mode: ColorMode,
   layout: NeonLayout,
   frame: FrameColors,
   dark: boolean
 ): void {
   const base: RGB = dark ? [74, 69, 63] : [150, 143, 132];
-  const groups = buildLineGroups(nctx, layout, frame, getMode("solid"));
+  const groups = buildLineGroups(nctx, layout, frame, mode === "perLetter" ? "perLetter" : "solid");
   const font = getFont(fontId);
 
   nctx.save();
@@ -764,7 +786,7 @@ export function drawNeon(
     if (spec.on) {
       drawLitSign(neonCtx, cw, ch, dpr, spec.fontId, mode, layout, frame, dark);
     } else {
-      drawOffSign(neonCtx, spec.fontId, layout, frame, dark);
+      drawOffSign(neonCtx, spec.fontId, mode, layout, frame, dark);
     }
 
     // 6. reflection below the sign (dark backgrounds, powered on)

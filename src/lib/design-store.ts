@@ -17,6 +17,8 @@ export interface DesignState {
   mode: ColorMode;
   /** solid color / fallback for unpainted letters */
   colorId: string;
+  /** gradient mode: second color */
+  colorId2: string;
   /** perLetter brush color (what gets painted on click) */
   brushColorId: string;
   /** perLetter: char index (newlines skipped) -> colorId */
@@ -38,6 +40,7 @@ export interface DesignState {
   setFont: (id: string) => void;
   setMode: (m: ColorMode) => void;
   setColor: (id: string) => void;
+  setColor2: (id: string) => void;
   setBrush: (id: string) => void;
   paintLetter: (index: number, colorId: string | null) => void;
   clearLetterColors: () => void;
@@ -56,6 +59,7 @@ export interface Preset {
   text: string;
   fontId: string;
   colorId: string;
+  colorId2?: string;
   mode?: ColorMode;
   letterColors?: Record<number, string>;
   flowColors?: string[];
@@ -74,30 +78,36 @@ export function splitLines(text: string): string[] {
     .slice(0, MAX_LINES);
 }
 
+const DEFAULT_DESIGN = {
+  text: "Good Vibes",
+  fontId: "pacifico",
+  mode: "solid" as ColorMode,
+  colorId: "rose",
+  colorId2: "ice",
+  brushColorId: "rose",
+  letterColors: {} as Record<number, string>,
+  flowColors: ["rose", "gold", "ice", "violet"],
+  flowSpeed: 1,
+  cycleColors: ["rose", "gold", "ice"],
+  cycleHold: 1,
+  cycleFade: 0.8,
+  backgroundId: "brick",
+  backgroundCustom: "#1A1714",
+  widthCm: 80,
+  on: true,
+};
+
 export const useDesign = create<DesignState>()(
   persist(
     (set) => ({
-      text: "Good Vibes",
-      fontId: "pacifico",
-      mode: "solid",
-      colorId: "rose",
-      brushColorId: "rose",
-      letterColors: {},
-      flowColors: ["rose", "gold", "ice", "violet"],
-      flowSpeed: 1,
-      cycleColors: ["rose", "gold", "ice"],
-      cycleHold: 1,
-      cycleFade: 0.8,
-      backgroundId: "brick",
-      backgroundCustom: "#1A1714",
-      widthCm: 80,
-      on: true,
+      ...DEFAULT_DESIGN,
 
       setText: (text) => set({ text }),
       setFont: (fontId) => set({ fontId }),
       setMode: (mode) =>
         set((s) => ({ mode, brushColorId: mode === "perLetter" ? s.colorId : s.brushColorId })),
       setColor: (colorId) => set({ colorId }),
+      setColor2: (colorId2) => set({ colorId2 }),
       setBrush: (brushColorId) => set({ brushColorId }),
       paintLetter: (index, colorId) =>
         set((s) => {
@@ -121,6 +131,7 @@ export const useDesign = create<DesignState>()(
           text: p.text,
           fontId: p.fontId,
           colorId: p.colorId,
+          colorId2: p.colorId2 ?? "ice",
           brushColorId: p.colorId,
           mode: p.mode ?? "solid",
           letterColors: p.letterColors ?? {},
@@ -136,7 +147,23 @@ export const useDesign = create<DesignState>()(
     {
       name: "printoo-neon-draft",
       storage: createJSONStorage(() => localStorage),
-      version: 3,
+      version: 4,
+      // migrate older drafts (v3 and below) instead of dropping them
+      migrate: (persisted) => {
+        const old = (persisted ?? {}) as Record<string, unknown>;
+        const next: Record<string, unknown> = { ...DEFAULT_DESIGN };
+        for (const key of Object.keys(DEFAULT_DESIGN)) {
+          const v = old[key];
+          if (v !== undefined && v !== null) next[key] = v;
+        }
+        // v3 -> v4: gradient second color
+        if (typeof old.colorId2 !== "string") next.colorId2 = DEFAULT_DESIGN.colorId2;
+        // sanitize the letter-color map
+        if (typeof next.letterColors !== "object" || next.letterColors === null || Array.isArray(next.letterColors)) {
+          next.letterColors = {};
+        }
+        return next as DesignState;
+      },
       // rehydrate manually after mount — keeps SSR and first client render
       // identical, so React hydration never mismatches on returning users
       skipHydration: true,

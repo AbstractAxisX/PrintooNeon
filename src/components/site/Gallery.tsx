@@ -17,8 +17,8 @@ interface GalleryPreset extends Preset {
 
 const PRESETS: GalleryPreset[] = [
   {
-    text: "Good Vibes", fontId: "pacifico", colorId: "rose",
-    backgroundId: "brick", label: "Bestseller", widthCm: 80,
+    text: "Good Vibes", fontId: "pacifico", colorId: "rose", colorId2: "hotpink",
+    mode: "gradient", backgroundId: "brick", label: "Bestseller", modeBadge: "gradient", widthCm: 80,
   },
   {
     text: "COFFEE", fontId: "monoton", colorId: "gold",
@@ -54,8 +54,8 @@ const PRESETS: GalleryPreset[] = [
     backgroundId: "wood", label: "Beach bar", modeBadge: "flow", widthCm: 80,
   },
   {
-    text: "dream big", fontId: "alexbrush", colorId: "violet",
-    backgroundId: "solid-charcoal", label: "Elegant", widthCm: 70,
+    text: "dream big", fontId: "alexbrush", colorId: "violet", colorId2: "ice",
+    mode: "gradient", backgroundId: "solid-charcoal", label: "Elegant", modeBadge: "gradient", widthCm: 70,
   },
   {
     text: "MUSIC", fontId: "orbitron", colorId: "ice",
@@ -63,8 +63,8 @@ const PRESETS: GalleryPreset[] = [
     backgroundId: "solid-black", label: "Night club", modeBadge: "flow", widthCm: 80,
   },
   {
-    text: "The Bar", fontId: "yellowtail", colorId: "red",
-    backgroundId: "brick", label: "Lounge", widthCm: 80,
+    text: "The Bar", fontId: "yellowtail", colorId: "red", colorId2: "orange",
+    mode: "gradient", backgroundId: "brick", label: "Lounge", modeBadge: "gradient", widthCm: 80,
   },
   {
     text: "Be Kind", fontId: "dancing", colorId: "violet",
@@ -75,6 +75,7 @@ const PRESETS: GalleryPreset[] = [
 
 const MODE_BADGE_LABEL: Record<ColorMode, string> = {
   solid: "",
+  gradient: "Gradient",
   flow: "Flow",
   perLetter: "Per letter",
   cycle: "Cycle",
@@ -114,6 +115,7 @@ export function Gallery() {
             lines: p.text.split("\n"),
             fontId: p.fontId,
             colorId: p.colorId,
+            colorId2: p.colorId2,
             mode: p.mode,
             letterColors: p.letterColors,
             flowColors: p.flowColors,
@@ -125,11 +127,13 @@ export function Gallery() {
             on: true,
           };
           const colorIds =
-            p.mode === "flow"
-              ? p.flowColors ?? []
-              : p.mode === "cycle"
-                ? p.cycleColors ?? []
-                : [p.colorId];
+            p.mode === "gradient"
+              ? [p.colorId, p.colorId2 ?? "ice"]
+              : p.mode === "flow"
+                ? p.flowColors ?? []
+                : p.mode === "cycle"
+                  ? p.cycleColors ?? []
+                  : [p.colorId];
           return (
             <motion.button
               key={p.text}

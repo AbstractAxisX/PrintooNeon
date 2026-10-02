@@ -19,6 +19,7 @@ import {
   ShoppingBag,
   Loader2,
   Droplet,
+  Blend,
   Waves,
   Paintbrush,
   Repeat,
@@ -26,7 +27,7 @@ import {
 } from "lucide-react";
 import { NeonCanvas } from "./NeonCanvas";
 import { OrderDialog } from "./OrderDialog";
-import { FontPicker } from "./FontPicker";
+import { FontAccordion } from "./FontAccordion";
 import { ColorPalette, ColorListPicker, ColorChipList } from "./ColorControls";
 import { LetterPainter } from "./LetterPainter";
 import { BackgroundPicker } from "./BackgroundPicker";
@@ -54,6 +55,7 @@ import { cn } from "@/lib/utils";
 
 const MODE_ICONS: Record<ColorMode, React.ComponentType<{ className?: string }>> = {
   solid: Droplet,
+  gradient: Blend,
   flow: Waves,
   perLetter: Paintbrush,
   cycle: Repeat,
@@ -67,6 +69,7 @@ export function Designer() {
     fontId,
     mode,
     colorId,
+    colorId2,
     brushColorId,
     letterColors,
     flowColors,
@@ -98,6 +101,7 @@ export function Designer() {
       fontId,
       mode,
       colorId,
+      colorId2,
       letterColors,
       flowColors,
       flowSpeed,
@@ -112,6 +116,7 @@ export function Designer() {
       fontId,
       mode,
       colorId,
+      colorId2,
       letterColors,
       flowColors,
       flowSpeed,
@@ -192,6 +197,7 @@ export function Designer() {
 
   const activeMode = getMode(mode);
   const activeColor = getColor(colorId);
+  const activeColor2 = getColor(colorId2);
   const activeBrush = getColor(brushColorId);
 
   return (
@@ -347,7 +353,7 @@ export function Designer() {
                   27 typefaces · searchable
                 </span>
               </div>
-              <FontPicker value={fontId} onChange={d.setFont} />
+              <FontAccordion value={fontId} onChange={d.setFont} />
             </div>
 
             {/* ---- color mode ---- */}
@@ -356,7 +362,7 @@ export function Designer() {
                 <Waves className="h-4 w-4 text-primary/80" />
                 Color mode
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Color mode">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5" role="radiogroup" aria-label="Color mode">
                 {COLOR_MODES.map((m) => {
                   const Icon = MODE_ICONS[m.id];
                   const active = activeMode === m.id;
@@ -396,6 +402,38 @@ export function Designer() {
                   </span>
                 </div>
                 <ColorPalette value={colorId} onChange={d.setColor} />
+              </div>
+            )}
+
+            {activeMode === "gradient" && (
+              <div className="space-y-3.5">
+                <div>
+                  <div className="field-label">
+                    <Palette className="h-4 w-4 text-primary/80" />
+                    Main color
+                    <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {activeColor.name}
+                    </span>
+                  </div>
+                  <ColorPalette value={colorId} onChange={d.setColor} ariaLabel="Main gradient color" />
+                </div>
+                <div>
+                  <div className="field-label">
+                    <Palette className="h-4 w-4 text-primary/80" />
+                    Second color
+                    <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {activeColor2.name}
+                    </span>
+                  </div>
+                  <ColorPalette value={colorId2} onChange={d.setColor2} ariaLabel="Second gradient color" />
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <span className="h-3 w-full rounded-full" style={{ background: `linear-gradient(90deg, ${activeColor.tube}, ${activeColor2.tube})`, boxShadow: `0 0 12px ${activeColor.glow}55, 0 0 12px ${activeColor2.glow}55` }} aria-hidden="true" />
+                  </div>
+                  <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                    The sign blends smoothly from the main color on the left to
+                    the second color on the right.
+                  </p>
+                </div>
               </div>
             )}
 

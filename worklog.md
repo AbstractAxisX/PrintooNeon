@@ -287,3 +287,35 @@ Work Log:
 
 Stage Summary:
 - LIVE at http://187.124.27.96:3100 with the thin single-line neon tube (white core recipe), always-animating compact order GIFs, admin timing row + per-letter color chips, and the 23-color per-letter cap.
+
+---
+Task ID: singleline-eaten-text-critique
+Agent: main (Z.ai Code)
+Task: User report: single-line mode is BROKEN in some fonts — erosion artifacts, text "eaten / bitten / melted / cut into pieces". Plus: perform a severe, sharp-eyed critique of the ENTIRE frontend and fix what matters.
+
+Work Log:
+- ROOT CAUSE (objective, proven by in-browser pixel tests): the old erosion pipeline measured ONE probe glyph ("o"/"م") for a MEDIAN stroke ratio. High-contrast fonts (Great Vibes, Alex Brush, Playfair, Cinzel, Amiri, Noto Naskh) have hairlines 3–5× thinner than that median; erodeCore/erodeFilament eroded MORE than the body — so hairlines/joins were erased entirely (the "eaten" look) and core/filament notched where strokes were thinner than the extra erosion (bite marks). A sweep test proved: cursive letter-joins and Naskh connections are only 1.5–3px at 120px (≈1.2–2.5% of font size), far below ANY percentile statistic; T-junctions split ~25% earlier than flat strokes. No fixed formula can be safe.
+- neon.ts v4 — "piece-calibrated erosion": measureInkStats now renders the ACTUAL text once at 60px and (a) computes P25/P50 stroke stats, (b) finds the empirical MAX SAFE EROSION by binary-searching the erosion that keeps the rendered connected-piece count IDENTICAL (base render = ground truth). singleLineGeom bounds erosion by THREE caps: piece-calibrated (0.85×maxSafe×fs), 45% of thinnest measured stroke, and ink<target (hairline fonts untouched). Cached per (fontGeneration|fontId|text) — runs on text change only, never per frame.
+- Core & filament rebuilt as blur∩tube-mask overlays (softMask): a blurred copy of the tube mask clipped via destination-in. A blur cannot create holes and the intersection stays inside the tube → white-hot core/filament can NEVER look bitten, regardless of stroke thinness. Thin strokes simply glow hotter (realistic). Fallback (no ctx.filter): shadow-offset blur trick.
+- Mask architecture: tight-bbox masks (SlMask with local anchor), SlSet = {body, gas, core, fil} cached with device-pixel budget (12MP) + LRU 96; blitSlMask tints per frame (source-in paint incl. flow gradients) and snaps to the device grid. Main + mini preview + GIF export share masks; animated modes only re-tint → 59fps measured. drawReflection now reuses a cached canvas (was allocating per frame). fonts.ts: fontGeneration counter bumps on every ensureFontsLoaded completion → caches measured with fallback fonts are invalidated.
+- Degenerate fallbacks everywhere: if a mask cannot be built, the text falls back to plain filled letters (never missing).
+- E2E OBJECTIVE sweep (12 fonts incl. all reported breakers + Lalezar/Vazirmatn): erode < split point → SAFE=true for every font (Anton erode 6.1 vs split 8.5 → thin tube preserved; scripts/Naskh get erode 0 → letters keep natural width, nothing eaten).
+- E2E VISUAL (agent-browser + VLM strict + neutral zoom): Great Vibes / Alex Brush / Playfair / Anton / Pacifico intact + tube-like; Amiri & Noto Naskh continuous with all Kurdish dots present (initial "gaps" flags were VLM over-reporting natural Naskh tapering / non-joining ە — proven by pure-fill piece counts: Amiri 3 groups = natural shaping, Noto Naskh 14 pieces = natural diacritic dots). Double-line regression: hollow outline confirmed at zoom. perLetter single-line colors ✓, off-state pale glass tubes ✓, Monoton cycle ✓.
+- SEVERE FRONTEND CRITIQUE — found & fixed:
+  1. navigator.clipboard is undefined on the production origin (plain HTTP) → the "copy order code" button threw an unhandled error and did nothing → new copyText() util (secure path + hidden-textarea execCommand fallback) used by OrderDialog & HistoryDialog.
+  2. letterColors went stale when the text changed (indices landed on wrong letters) → setText prunes out-of-range indices and clears the map when the script flips (Latin↔Arabic).
+  3. My-orders badge zeroed after ANY history change → recountOrders.
+  4. Order-code collision loop could 500 after 8 collisions → 40 retries + timestamp-unique fallback.
+  5. Dark primary contrast was 3.71:1 (white-on-rose buttons) → L 60→53 (≈4.3–4.5 both directions); light mode 52→50.
+  6. No footer at all → classic sticky Footer (mt-auto, flex column root, safe-area inset).
+  7. Micro text 10/10.5px → 11px across our components.
+  8. Floating mini preview overlapped the history dialog → hides behind every dialog now.
+  9. drawReflection allocated a canvas every animation frame (GC churn) → cached scratch.
+  Accepted trade-off: high-contrast fonts keep their natural stroke width in single-line (erosion 0) — never eaten beats maximally thin; Anton-class bold fonts still thin to real tube width.
+- E2E FLOWS: typing → pruning verified; single-line toggle; per-letter painting via chips; cycle order → NE-9048 (GIF 1.04MB data URL animating in admin detail, timing row "each color holds 1s · crossfade 0.8s"); status change NEW→CONTACTED reflected in table; mobile 375px clean; footer verified; 0 page/console errors; lint clean; tsc deltas = 2 pre-existing only.
+- Deployed: commit d306866 → Actions deploy run 37011375635 (mode=deploy port=3100) SUCCESS → verify run 37011492240 SUCCESS (printoo active, GET / 200 + title, fonts 200, orders API EXTERNAL_API_OK, ADMIN_LOGIN_OK, printoo24-admin active, all 5 docker containers Up 2–3 months untouched) → clean-tests run 37011598454 SUCCESS ("deleted test orders: 2").
+
+Stage Summary:
+- Single-line mode can no longer "eat" text: erosion is calibrated per actual text against the real failure mode (piece splitting), and the white core/filament are hole-free by construction. The exact fonts from the complaint render complete on the live server.
+- The severe review also surfaced and fixed 9 real frontend defects (clipboard-on-HTTP, stale paint map, badge, code collisions, contrast, footer, micro type, dialog overlay, per-frame allocation).
+- LIVE: http://187.124.27.96:3100 (single-line engine v4 + critique fixes). Server DB cleaned; other services untouched.

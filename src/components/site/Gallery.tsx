@@ -71,6 +71,20 @@ const PRESETS: GalleryPreset[] = [
     mode: "cycle", cycleColors: ["violet", "ice", "mint"], cycleHold: 1.2, cycleFade: 0.9,
     backgroundId: "plaster", label: "Inspirational", modeBadge: "cycle", widthCm: 70,
   },
+  // ---- Kurdish Sorani samples (connected script) ----
+  {
+    text: "بەخێربێن", fontId: "lalezar", colorId: "rose",
+    backgroundId: "brick", label: "بەخێربێن · Welcome", widthCm: 80,
+  },
+  {
+    text: "نیۆن", fontId: "baloobhaijaan", colorId: "gold", colorId2: "coral",
+    mode: "gradient", backgroundId: "solid-charcoal", label: "نیۆن · Neon", modeBadge: "gradient", widthCm: 60,
+  },
+  {
+    text: "خۆشەویستی", fontId: "vazirmatn", colorId: "hotpink",
+    mode: "flow", flowColors: ["hotpink", "violet", "ice", "aqua"], flowSpeed: 1,
+    backgroundId: "plaster", label: "خۆشەویستی · Love", modeBadge: "flow", widthCm: 70,
+  },
 ];
 
 const MODE_BADGE_LABEL: Record<ColorMode, string> = {

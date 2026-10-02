@@ -27,14 +27,18 @@ import {
 import { NeonCanvas } from "./NeonCanvas";
 import {
   downloadNeonFile,
+  exportNeonImage,
+  exportNeonGif,
   normalizeDigits,
   getColor,
   getFont,
   getMode,
   COLOR_MODES,
   isAnimatedMode,
+  textTokens,
   type NeonSpec,
 } from "@/lib/neon";
+import { addOrder } from "@/lib/history";
 
 interface OrderDialogProps {
   open: boolean;
@@ -88,6 +92,35 @@ export function OrderDialog({
     return `${modeName}: ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`;
   }, [mode, spec.colorId2, spec.flowColors, spec.cycleColors, spec.letterColors, color.name, color2.name, modeName]);
 
+  /** ordered list of colorIds actually used by the design (drives the
+      order record + the color swatches shown to the admin) */
+  const orderedColors = useMemo(() => {
+    const ids: string[] = [];
+    const push = (id: string | undefined | null) => {
+      if (id && !ids.includes(id)) ids.push(id);
+    };
+    if (mode === "gradient") {
+      push(spec.colorId);
+      push(spec.colorId2 ?? "ice");
+    } else if (mode === "flow") {
+      (spec.flowColors ?? []).forEach(push);
+    } else if (mode === "cycle") {
+      (spec.cycleColors ?? []).forEach(push);
+    } else if (mode === "perLetter") {
+      // walk the sign in reading order — colors appear in the order used
+      for (const tok of textTokens(displayText)) {
+        push(spec.letterColors?.[tok.index] ?? spec.colorId);
+      }
+    } else {
+      push(spec.colorId);
+    }
+    if (ids.length === 0) push(spec.colorId);
+    return ids.map((id) => {
+      const c = getColor(id);
+      return { id: c.id, name: c.name, tube: c.tube };
+    });
+  }, [mode, spec, displayText]);
+
   /** full design config stored with the order (for exact reproduction) */
   const configJson = useMemo(
     () =>
@@ -120,19 +153,52 @@ export function OrderDialog({
       return;
     }
 
-    // lightweight JPEG snapshot to attach to the order
-    const { exportNeonImage } = await import("@/lib/neon");
-    const shot = exportNeonImage(spec, {
-      width: 1200,
-      height: 750,
-      type: "image/jpeg",
-      quality: 0.85,
-      // pick a moment where animated modes show their blend
-      tSec: isAnimatedMode(mode) ? 1.4 : 0,
-    });
-
     setSubmitting(true);
     try {
+      // attached preview: animated designs render a real GIF (the admin
+      // sees the animation play); static designs a crisp JPEG snapshot
+      let imageData: string | null = null;
+      let thumb: string | null = null;
+      if (isAnimatedMode(mode)) {
+        toast.info("Rendering your animated design…");
+        // compact settings: good motion, order-friendly payload size
+        const blob = await exportNeonGif(spec, {
+          width: 640,
+          height: 400,
+          flowFrames: 30,
+          frameBudget: 52,
+        });
+        if (blob) {
+          imageData = await new Promise<string | null>((resolve) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(typeof fr.result === "string" ? fr.result : null);
+            fr.onerror = () => resolve(null);
+            fr.readAsDataURL(blob);
+          });
+          // oversized GIF (rare, very busy backgrounds) — fall back to a still
+          if (imageData && imageData.length > 7_500_000) imageData = null;
+        }
+      }
+      const shot = exportNeonImage(spec, {
+        width: 1200,
+        height: 750,
+        type: "image/jpeg",
+        quality: 0.85,
+        // pick a moment where animated modes show their blend
+        tSec: isAnimatedMode(mode) ? 1.4 : 0,
+      });
+      if (!imageData) imageData = shot?.dataUrl ?? null;
+
+      // small thumbnail for the customer's local order history
+      const small = exportNeonImage(spec, {
+        width: 240,
+        height: 150,
+        type: "image/jpeg",
+        quality: 0.6,
+        tSec: isAnimatedMode(mode) ? 1.4 : 0,
+      });
+      thumb = small?.dataUrl ?? "";
+
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -148,11 +214,25 @@ export function OrderDialog({
           widthCm,
           backgroundId: spec.background?.id ?? "brick",
           configJson,
-          imageData: shot?.dataUrl ?? null,
+          colors: orderedColors.map((c) => c.id),
+          imageData,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Order failed");
+
+      // keep this order in the customer's local history (with its code)
+      addOrder({
+        code: data.code,
+        text: displayText,
+        fontName: font.name,
+        modeName,
+        colors: orderedColors,
+        widthCm,
+        createdAt: new Date().toISOString(),
+        thumb,
+      });
+
       setSuccess({ code: data.code });
       toast.success("Your order has been placed 🎉");
     } catch (err) {
@@ -219,18 +299,23 @@ export function OrderDialog({
                 <NeonCanvas spec={spec} aspect={1.7} />
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                <Badge variant="secondary" className="max-w-full truncate font-medium">
+                <Badge variant="secondary" className="max-w-full truncate font-medium" dir="auto">
                   {displayText.split("\n").join(" · ").slice(0, 30)}
                 </Badge>
                 <Badge variant="secondary" className="font-medium">
-                  {font.name}
+                  {font.name.split(" ")[0]}
                 </Badge>
                 <Badge variant="secondary" className="max-w-full truncate font-medium">
-                  <span
-                    className="mr-1 inline-block h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: color.tube, boxShadow: `0 0 6px ${color.glow}` }}
-                  />
-                  {colorSummary}
+                  <span className="flex items-center gap-1">
+                    {orderedColors.slice(0, 5).map((c) => (
+                      <span
+                        key={c.id}
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ background: c.tube, boxShadow: `0 0 4px ${c.tube}` }}
+                      />
+                    ))}
+                    <span className="ml-0.5">{colorSummary}</span>
+                  </span>
                 </Badge>
                 <Badge variant="secondary" className="font-medium">
                   {widthCm} cm wide
@@ -299,7 +384,7 @@ export function OrderDialog({
                 {submitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Placing your order…
+                    {isAnimatedMode(mode) ? "Rendering animated design…" : "Placing your order…"}
                   </>
                 ) : (
                   "Place order"

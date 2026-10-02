@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Neon sign design order — simple version (no pricing, no admin panel)
+// Neon sign design order — simple version (no pricing)
 model Order {
   id           String   @id @default(cuid())
   code         String   @unique // short order code like NE-4821
@@ -29,7 +29,10 @@ model Order {
   backgroundId String? // wall photo or solid background id
   configJson   String? // full design config JSON (colors, timings, background, letter colors)
 
-  imageData    String? // preview image data URL (JPEG)
+  /** ordered list of color ids actually used, in order (JSON array) */
+  colorsJson   String?
+
+  imageData    String? // preview image data URL (JPEG or animated GIF)
 
   status       String   @default("new") // new | contacted | done
   createdAt    DateTime @default(now())

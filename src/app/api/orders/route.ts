@@ -30,10 +30,12 @@ const orderSchema = z.object({
   widthCm: z.number().int().min(20).max(250),
   backgroundId: z.string().trim().max(60).optional().nullable(),
   configJson: z.string().max(20_000).optional().nullable(),
+  /** ordered list of colorIds actually used, in order */
+  colors: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
   imageData: z
     .string()
     .startsWith("data:image/")
-    .max(4_000_000, "Design image is too large")
+    .max(8_000_000, "Design image is too large")
     .optional()
     .nullable(),
 });
@@ -115,6 +117,15 @@ export async function POST(req: NextRequest) {
         widthCm: d.widthCm,
         backgroundId: bg?.id ?? d.backgroundId ?? null,
         configJson: d.configJson ?? null,
+        colorsJson:
+          d.colors && d.colors.length > 0
+            ? JSON.stringify(
+                d.colors.map((id) => {
+                  const c = NEON_COLORS.find((x) => x.id === id);
+                  return { id, name: c?.name ?? id, tube: c?.tube ?? "#FFFFFF" };
+                })
+              )
+            : null,
         imageData: d.imageData ?? null,
       },
       select: { id: true, code: true, createdAt: true },

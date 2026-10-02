@@ -37,7 +37,7 @@ import {
   smoothstep,
   type RGB,
 } from "./colors";
-import { getFont, fontCss, ensureFontsLoaded } from "./fonts";
+import { getFont, fontCss, ensureFontsLoaded, hasArabicScript } from "./fonts";
 import { resolveBackground, drawBackground, ensureBackgroundLoaded } from "./backgrounds";
 import type { BackgroundSpec } from "./backgrounds";
 
@@ -57,6 +57,16 @@ export function getMode(id?: ColorMode): ColorMode {
 
 export function isAnimatedMode(mode: ColorMode): boolean {
   return mode === "flow" || mode === "cycle";
+}
+
+/** true when the line contains Arabic-script letters (Kurdish Sorani / Persian) */
+export function isRTLText(s: string): boolean {
+  return hasArabicScript(s);
+}
+
+/** true when ANY line of the text uses the Arabic script */
+export function hasRTL(text: string): boolean {
+  return hasArabicScript(text);
 }
 
 /* ---------------- spec ---------------- */
@@ -110,7 +120,16 @@ export interface GlyphBox {
 }
 
 export interface NeonLayout {
-  line: { text: string; fontSize: number; y: number; tube: number; startX: number; width: number }[];
+  line: {
+    text: string;
+    fontSize: number;
+    y: number;
+    tube: number;
+    startX: number;
+    width: number;
+    /** connected RTL script — glyphs are whole words, drawn right-to-left */
+    rtl: boolean;
+  }[];
   glyphs: GlyphBox[];
   width: number;
   height: number;
@@ -161,12 +180,17 @@ export function layoutSign(
   const line: NeonLayout["line"] = [];
   const glyphs: GlyphBox[] = [];
 
-  // char index base of each line inside the "newlines removed" string
+  // per-line "glyph unit" count that advances the shared index counter:
+  // chars for LTR lines, whole words for RTL (connected script) lines.
+  // MUST stay in sync with textTokens() below.
+  const unitCount = (l: string): number =>
+    isRTLText(l) ? l.split(/\s+/).filter(Boolean).length : Array.from(l).length;
+
   let off = 0;
   const lineOffsets: number[] = [];
   for (const l of lines) {
     lineOffsets.push(off);
-    off += Array.from(l).length;
+    off += unitCount(l);
   }
 
   lines.forEach((raw, i) => {
@@ -176,8 +200,47 @@ export function layoutSign(
     top += fs * LINE_GAP;
     ctx.font = fontCss(font, fs);
     const width = drawText ? ctx.measureText(drawText).width : 0;
+    const rtl = drawText ? isRTLText(drawText) : false;
 
-    // glyph boxes (advance-based positions; used for painting + hit-testing)
+    if (rtl) {
+      /* ---- connected script: whole-word boxes, placed right-to-left.
+         Drawing a word as ONE string keeps the letter joins intact —
+         per-character drawing would isolate every letter and visibly
+         cut the word apart (the «من» bug). ---- */
+      const tokens = drawText.split(/\s+/).filter(Boolean);
+      const tokenW = tokens.map((t) => ctx.measureText(t).width);
+      const spaceW = tokens.length > 1 ? ctx.measureText(" ").width : 0;
+
+      line.push({
+        text: drawText,
+        fontSize: fs,
+        y,
+        tube: Math.max(2.5, fs * font.tubeFactor),
+        startX: cx - width / 2,
+        width: Math.min(width, maxW),
+        rtl: true,
+      });
+
+      // first logical word goes on the RIGHT (RTL reading order)
+      let cursor = cx + width / 2;
+      tokens.forEach((tok, j) => {
+        const w = tokenW[j];
+        const x = cursor - w;
+        glyphs.push({
+          ch: tok,
+          index: lineOffsets[i] + j,
+          line: i,
+          x,
+          y: y - fs * 0.72,
+          w: Math.max(w, fs * 0.2),
+          h: fs * 1.44,
+        });
+        cursor = x - spaceW;
+      });
+      return;
+    }
+
+    // ---- LTR: per-character boxes (Latin letters never join) ----
     const chars = Array.from(drawText);
     const rawChars = Array.from(raw);
     const lead = rawChars.length - Array.from(raw.trimStart()).length;
@@ -191,6 +254,7 @@ export function layoutSign(
       tube: Math.max(2.5, fs * font.tubeFactor),
       startX: cx - adv / 2,
       width: Math.min(width, maxW),
+      rtl: false,
     });
 
     let x = cx - adv / 2;
@@ -219,14 +283,26 @@ export function layoutSign(
   };
 }
 
-/** Characters of the raw text with newlines removed (index target for painting) */
-export function textGlyphs(text: string): { ch: string; index: number }[] {
-  const out: { ch: string; index: number }[] = [];
+/**
+ * Paintable units of the text with newlines removed:
+ * per-character for Latin, per-WORD for Arabic-script text (words are the
+ * connected unit — Latin-style letter-by-letter would break the joins).
+ * Indices align 1:1 with layoutSign's glyph boxes.
+ */
+export function textTokens(text: string): { ch: string; index: number; rtl: boolean }[] {
+  const out: { ch: string; index: number; rtl: boolean }[] = [];
   let idx = 0;
-  for (const ch of Array.from(text)) {
-    if (ch === "\n") continue;
-    out.push({ ch, index: idx });
-    idx++;
+  for (const raw of text.split("\n")) {
+    const t = raw.trim();
+    if (isRTLText(t)) {
+      for (const tok of t.split(/\s+/).filter(Boolean)) {
+        out.push({ ch: tok, index: idx++, rtl: true });
+      }
+    } else {
+      for (const ch of Array.from(raw)) {
+        out.push({ ch, index: idx++, rtl: false });
+      }
+    }
   }
   return out;
 }
@@ -548,6 +624,7 @@ function drawLitSign(
     for (const g of groups) {
       if (!g.l.text) continue;
       lctx.font = fontCss(font, g.l.fontSize);
+      lctx.direction = g.l.rtl ? "rtl" : "ltr";
       if (g.paint) {
         strokeLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, g.l.tube * 1.35, 0.9);
       } else if (g.perGlyph) {
@@ -583,6 +660,7 @@ function drawLitSign(
       for (const g of groups) {
         if (!g.l.text) continue;
         nctx.font = fontCss(font, g.l.fontSize);
+        nctx.direction = g.l.rtl ? "rtl" : "ltr";
         if (g.paint) {
           const glowCss = g.paint.glow as string;
           nctx.shadowColor = glowCss;
@@ -610,6 +688,7 @@ function drawLitSign(
   for (const g of groups) {
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
+    nctx.direction = g.l.rtl ? "rtl" : "ltr";
     if (g.paint) {
       strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube, 1);
     } else if (g.perGlyph) {
@@ -625,6 +704,7 @@ function drawLitSign(
   for (const g of groups) {
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
+    nctx.direction = g.l.rtl ? "rtl" : "ltr";
     if (g.paint) {
       strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.core, g.l.tube * 0.45, 0.95);
       strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.filament, g.l.tube * 0.18, 0.9);
@@ -663,6 +743,7 @@ function drawOffSign(
   for (const g of groups) {
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
+    nctx.direction = g.l.rtl ? "rtl" : "ltr";
     if (g.paint) {
       // pale unlit glass + faint colored sheen
       strokeLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), g.l.tube, 0.92);
@@ -858,6 +939,10 @@ export async function exportNeonGif(
   options: {
     width?: number;
     height?: number;
+    /** flow mode: number of frames in one full sweep (default 48) */
+    flowFrames?: number;
+    /** hard cap on total frames — longer plans are uniformly subsampled */
+    frameBudget?: number;
     onProgress?: (done: number, total: number) => void;
   } = {}
 ): Promise<Blob | null> {
@@ -881,11 +966,11 @@ export async function exportNeonGif(
   if (!ctx) return null;
 
   // ---- build the frame plan ----
-  const frames: GifFrame[] = [];
+  let frames: GifFrame[] = [];
   if (mode === "flow") {
     const speed = Math.min(3, Math.max(0.25, spec.flowSpeed ?? 1));
     const cycle = 8 / speed; // seconds for one full sweep
-    const n = 48;
+    const n = Math.max(12, Math.min(48, options.flowFrames ?? 48));
     for (let i = 0; i < n; i++) {
       frames.push({ t: (i * cycle) / n, delayMs: Math.max(20, Math.round((cycle * 1000) / n)) });
     }
@@ -906,6 +991,19 @@ export async function exportNeonGif(
         });
       }
     }
+  }
+
+  // ---- keep the payload small: uniformly subsample long plans, merging delays ----
+  const budget = Math.max(12, options.frameBudget ?? 160);
+  if (frames.length > budget) {
+    const k = Math.ceil(frames.length / budget);
+    const kept: GifFrame[] = [];
+    for (let i = 0; i < frames.length; i += k) {
+      let delay = 0;
+      for (let j = i; j < Math.min(i + k, frames.length); j++) delay += frames[j].delayMs;
+      kept.push({ t: frames[i].t, delayMs: Math.max(20, delay) });
+    }
+    frames = kept;
   }
 
   const gif = GIFEncoder();

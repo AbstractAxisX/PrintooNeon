@@ -77,6 +77,7 @@ Environment=NODE_ENV=production
 Environment=PORT=$PORT
 Environment=HOSTNAME=0.0.0.0
 Environment=DATABASE_URL=file:$APP/db/custom.db
+Environment=ADMIN_PASSWORD=PrintooNeon-KeGs04A78WnF
 ExecStart=$HOME/.bun/bin/bun $APP/.next/standalone/server.js
 Restart=always
 RestartSec=3

@@ -230,3 +230,13 @@
 .section-title {
   @apply text-2xl font-extrabold tracking-tight sm:text-3xl;
 }
+
+/* ---- Kurdish Sorani / Persian (Arabic script, RTL) — self-hosted ---- */
+@font-face { font-family: "Lalezar"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/lalezar-400.woff2") format("woff2"); }
+@font-face { font-family: "Baloo Bhaijaan 2"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/baloobhaijaan2-700.woff2") format("woff2"); }
+@font-face { font-family: "Reem Kufi"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/reemkufi-600.woff2") format("woff2"); }
+@font-face { font-family: "Mada"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/mada-700.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/vazirmatn-700.woff2") format("woff2"); }
+@font-face { font-family: "Noto Naskh Arabic"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/notonaskharabic-700.woff2") format("woff2"); }
+@font-face { font-family: "Amiri"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/amiri-700.woff2") format("woff2"); }
+@font-face { font-family: "Harmattan"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/harmattan-700.woff2") format("woff2"); }

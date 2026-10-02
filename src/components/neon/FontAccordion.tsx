@@ -8,36 +8,71 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
-import { Check, Search, Type } from "lucide-react";
-import { NEON_FONTS, FONT_CATEGORIES, getFont, type FontCategory, type NeonFont } from "@/lib/fonts";
+import { Check, Search, Type, Languages } from "lucide-react";
+import {
+  NEON_FONTS,
+  FONT_CATEGORIES,
+  getFont,
+  fontSampleText,
+  type FontCategory,
+  type FontScript,
+  type NeonFont,
+} from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 
 interface FontAccordionProps {
   value: string;
   onChange: (id: string) => void;
+  /** script of the text being typed — used to warn about mismatches */
+  hintScript?: FontScript;
 }
 
 /**
  * Inline font accordion — expands in place (no modal/popover).
- * Header shows the active font in its own typeface; the content holds a
- * searchable, category-grouped grid. Stays open while browsing so the
- * live preview (and the mobile floating preview) react to every pick.
+ * English and Kurdish (کوردی) fonts live in SEPARATE tabs so the two
+ * writing systems never mix in one grid. Kurdish cards preview with a
+ * real Kurdish word. Stays open while browsing so the live preview
+ * (and the mobile floating preview) react to every pick.
  */
-export function FontAccordion({ value, onChange }: FontAccordionProps) {
+export function FontAccordion({ value, onChange, hintScript }: FontAccordionProps) {
   const [query, setQuery] = useState("");
+  const [tab, setTab] = useState<FontScript>(() => getFont(value).script);
   const active = getFont(value);
+
+  // typing Kurdish auto-switches to the Kurdish tab (and vice versa) —
+  // state adjusted during render, the React-endorsed pattern for
+  // "derived from props" (no effect, no cascade)
+  const [appliedHint, setAppliedHint] = useState<FontScript | undefined>(hintScript);
+  if (hintScript !== appliedHint) {
+    setAppliedHint(hintScript);
+    if (hintScript) setTab(hintScript);
+  }
+
+  const mismatch = hintScript && hintScript !== active.script;
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return FONT_CATEGORIES.map((cat) => ({
-      cat,
-      fonts: NEON_FONTS.filter(
-        (f) =>
-          f.category === (cat.id as FontCategory) &&
-          (!q || f.name.toLowerCase().includes(q) || cat.name.toLowerCase().includes(q))
-      ),
-    })).filter((g) => g.fonts.length > 0);
-  }, [query]);
+    return FONT_CATEGORIES.filter((cat) => cat.script === tab)
+      .map((cat) => ({
+        cat,
+        fonts: NEON_FONTS.filter(
+          (f) =>
+            f.category === (cat.id as FontCategory) &&
+            (!q ||
+              f.name.toLowerCase().includes(q) ||
+              cat.name.toLowerCase().includes(q))
+        ),
+      }))
+      .filter((g) => g.fonts.length > 0);
+  }, [query, tab]);
+
+  const counts = useMemo(
+    () => ({
+      latin: NEON_FONTS.filter((f) => f.script === "latin").length,
+      arabic: NEON_FONTS.filter((f) => f.script === "arabic").length,
+    }),
+    []
+  );
 
   return (
     <Accordion
@@ -55,7 +90,11 @@ export function FontAccordion({ value, onChange }: FontAccordionProps) {
           <span className="flex min-w-0 flex-1 items-center gap-3">
             <Type className="h-4 w-4 shrink-0 text-primary/70" />
             <span
-              className="truncate text-[20px] leading-tight text-foreground"
+              className={cn(
+                "truncate text-[20px] leading-tight text-foreground",
+                active.script === "arabic" && "text-[19px]"
+              )}
+              dir="auto"
               style={{
                 fontFamily: `"${active.family}", "Inter", sans-serif`,
                 fontWeight: active.weight,
@@ -65,10 +104,42 @@ export function FontAccordion({ value, onChange }: FontAccordionProps) {
             </span>
           </span>
           <span className="hidden shrink-0 text-[11px] font-normal text-muted-foreground sm:inline">
-            {NEON_FONTS.length} typefaces · searchable
+            {active.script === "arabic" ? `کوردی · ${counts.arabic} fonts` : `English · ${counts.latin} fonts`}
           </span>
         </AccordionTrigger>
         <AccordionContent className="pb-4">
+          {/* English / Kurdish script tabs */}
+          <div
+            role="tablist"
+            aria-label="Font script"
+            className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1"
+          >
+            {(
+              [
+                { id: "latin" as FontScript, label: "English", count: counts.latin },
+                { id: "arabic" as FontScript, label: "کوردی سورانی", count: counts.arabic },
+              ]
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold transition-all",
+                  tab === t.id
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Languages className="h-3.5 w-3.5 opacity-70" />
+                {t.label}
+                <span className="text-[10px] font-normal opacity-60">{t.count}</span>
+              </button>
+            ))}
+          </div>
+
           <div className="relative mb-3">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -78,6 +149,25 @@ export function FontAccordion({ value, onChange }: FontAccordionProps) {
               className="h-10 rounded-lg border-input pl-9 text-[13.5px]"
             />
           </div>
+
+          {mismatch && (
+            <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-[12px] leading-5 text-amber-700 dark:text-amber-400">
+              <span aria-hidden>⚠</span>
+              <span>
+                {hintScript === "arabic"
+                  ? "Your text is Kurdish/Persian — pick a Kurdish font so the letters join properly."
+                  : "Your text is Latin — an English font fits this text better."}
+                <button
+                  type="button"
+                  onClick={() => setTab(hintScript)}
+                  className="ml-1.5 font-bold underline underline-offset-2"
+                >
+                  Show {hintScript === "arabic" ? "Kurdish" : "English"} fonts
+                </button>
+              </span>
+            </div>
+          )}
+
           {/* Full height — no scrolling box, no clipping: every font is
               rendered in place and the page itself scrolls. */}
           <div>
@@ -125,6 +215,7 @@ function FontOption({
   active: boolean;
   onPick: () => void;
 }) {
+  const sample = fontSampleText(font);
   return (
     <button
       type="button"
@@ -132,6 +223,7 @@ function FontOption({
       aria-checked={active}
       onClick={onPick}
       title={font.name}
+      dir={font.script === "arabic" ? "rtl" : "ltr"}
       className={cn(
         "relative flex min-w-0 flex-col items-center justify-center rounded-xl border px-1.5 py-3 transition-all duration-200",
         active
@@ -146,9 +238,12 @@ function FontOption({
         )}
         style={{ fontFamily: `"${font.family}", "Inter", sans-serif`, fontWeight: font.weight }}
       >
-        Neon
+        {sample}
       </span>
-      <span className="mt-1 w-full truncate text-center text-[10px] leading-tight text-muted-foreground">
+      <span
+        className="mt-1 w-full truncate text-center text-[10px] leading-tight text-muted-foreground"
+        dir="auto"
+      >
         {font.name}
       </span>
       {active && (

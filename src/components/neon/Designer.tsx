@@ -24,9 +24,11 @@ import {
   Paintbrush,
   Repeat,
   Image as ImageIcon,
+  History,
 } from "lucide-react";
 import { NeonCanvas } from "./NeonCanvas";
 import { OrderDialog } from "./OrderDialog";
+import { HistoryDialog } from "./HistoryDialog";
 import { FontAccordion } from "./FontAccordion";
 import { ColorPalette, ColorListPicker, ColorChipList } from "./ColorControls";
 import { LetterPainter } from "./LetterPainter";
@@ -36,13 +38,14 @@ import {
   downloadNeonFile,
   estimateSizeCm,
   getMode,
+  hasRTL,
   isAnimatedMode,
   type NeonSpec,
   type NeonLayout,
   type ColorMode,
 } from "@/lib/neon";
 import { getColor } from "@/lib/colors";
-import { NEON_FONTS } from "@/lib/fonts";
+import { NEON_FONTS, getFont } from "@/lib/fonts";
 import {
   useDesign,
   splitLines,
@@ -85,9 +88,22 @@ export function Designer() {
   } = d;
 
   const [orderOpen, setOrderOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [orderCount, setOrderCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [miniVisible, setMiniVisible] = useState(false);
+
+  // how many past orders does this customer have? (for the badge)
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("printoo-neon-orders");
+      const n = raw ? (JSON.parse(raw) as unknown[]).length : 0;
+      if (Number.isFinite(n)) setOrderCount(n);
+    } catch {
+      /* ignore */
+    }
+  }, [historyOpen]);
 
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -136,6 +152,11 @@ export function Designer() {
   const maxChars = MAX_LINES * (MAX_CHARS_PER_LINE + 1) - 1;
   const overflowLine = lines.findIndex((l) => l.length > MAX_CHARS_PER_LINE);
   const animated = isAnimatedMode(mode) && on;
+
+  // Kurdish / Persian text: RTL typing direction + the matching font tab
+  const textRtl = hasRTL(text);
+  const textScript: "latin" | "arabic" = textRtl ? "arabic" : "latin";
+  const activeFont = getFont(fontId);
 
   /* ---- floating mini preview (mobile): show when the real preview scrolled away ---- */
   useEffect(() => {
@@ -305,6 +326,20 @@ export function Designer() {
                 <ShoppingBag className="h-4 w-4" />
                 Order this design
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => setHistoryOpen(true)}
+                className="relative gap-2 rounded-lg"
+                title="My past orders and their codes"
+              >
+                <History className="h-4 w-4" />
+                My orders
+                {orderCount > 0 && (
+                  <span className="ml-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10.5px] font-bold text-primary-foreground">
+                    {orderCount}
+                  </span>
+                )}
+              </Button>
             </div>
           </div>
         </Card>
@@ -326,6 +361,7 @@ export function Designer() {
                 onChange={(e) => d.setText(e.target.value)}
                 placeholder={"Your text…\ne.g. Good Vibes"}
                 rows={3}
+                dir={textRtl ? "rtl" : "ltr"}
                 className="resize-none rounded-xl text-[15px] leading-8"
                 maxLength={maxChars}
               />
@@ -354,7 +390,7 @@ export function Designer() {
                   {NEON_FONTS.length} typefaces · searchable
                 </span>
               </div>
-              <FontAccordion value={fontId} onChange={d.setFont} />
+              <FontAccordion value={fontId} onChange={d.setFont} hintScript={textScript} />
             </div>
 
             {/* ---- color mode ---- */}
@@ -673,10 +709,31 @@ export function Designer() {
       {mounted && (
         <OrderDialog
           open={orderOpen}
-          onOpenChange={setOrderOpen}
+          onOpenChange={(v) => {
+            setOrderOpen(v);
+            if (!v) {
+              // refresh the My-orders badge after a successful order
+              try {
+                const raw = window.localStorage.getItem("printoo-neon-orders");
+                const n = raw ? (JSON.parse(raw) as unknown[]).length : 0;
+                if (Number.isFinite(n)) setOrderCount(n);
+              } catch {
+                /* ignore */
+              }
+            }
+          }}
           spec={spec}
           text={text}
           widthCm={widthCm}
+        />
+      )}
+
+      {/* customer order history (localStorage) */}
+      {mounted && (
+        <HistoryDialog
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          onOrdersChanged={() => setOrderCount(0)}
         />
       )}
     </section>

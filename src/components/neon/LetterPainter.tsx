@@ -1,14 +1,15 @@
 "use client";
 
-import { textGlyphs } from "@/lib/neon";
+import { textTokens, hasRTL } from "@/lib/neon";
 import { getColor } from "@/lib/colors";
-import { Paintbrush, Eraser, MousePointerClick } from "lucide-react";
+import { Paintbrush, Eraser, MousePointerClick, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Per-letter painting: every character of the text becomes a chip.
- * Click a chip (or the letter on the preview) to paint it with the
- * active palette color; clicking a chip already in that color resets it.
+ * Per-letter painting. For Latin text every character is a chip; for
+ * Kurdish/Persian (connected script) every WORD is a chip — letters
+ * inside a word are physically joined in Arabic script, so the word is
+ * the smallest unit a real neon tube can be colored in.
  */
 export function LetterPainter({
   text,
@@ -23,25 +24,29 @@ export function LetterPainter({
   onPaint: (index: number) => void;
   onClear: () => void;
 }) {
-  const glyphs = textGlyphs(text);
-  const paintedCount = glyphs.filter((g) => letterColors[g.index]).length;
+  const tokens = textTokens(text);
+  const rtl = hasRTL(text);
+  const paintedCount = tokens.filter((g) => letterColors[g.index]).length;
   const brush = getColor(brushColorId);
 
-  if (glyphs.length === 0) {
+  if (tokens.length === 0) {
     return (
       <p className="text-[12px] italic text-muted-foreground">
-        Type some text first, then paint each letter.
+        Type some text first, then paint each {rtl ? "word" : "letter"}.
       </p>
     );
   }
 
   return (
     <div className="space-y-2.5">
-      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border bg-muted/30 p-2.5">
-        {glyphs.map((g) => {
+      <div
+        dir={rtl ? "rtl" : "ltr"}
+        className="flex flex-wrap items-center gap-1.5 rounded-xl border bg-muted/30 p-2.5"
+      >
+        {tokens.map((g) => {
           const id = letterColors[g.index];
           const c = id ? getColor(id) : null;
-          const clickable = g.ch !== " ";
+          const clickable = g.ch.trim() !== "";
           return (
             <button
               key={g.index}
@@ -50,11 +55,14 @@ export function LetterPainter({
               onClick={() => clickable && onPaint(g.index)}
               aria-label={
                 clickable
-                  ? `Letter ${g.ch}${c ? `, painted ${c.name}` : ", not painted"} — click to paint with ${brush.name}`
+                  ? `${rtl ? "Word" : "Letter"} ${g.ch}${c ? `, painted ${c.name}` : ", not painted"} — click to paint with ${brush.name}`
                   : undefined
               }
               className={cn(
-                "min-w-7 rounded-lg border px-1.5 py-1 text-[15px] font-semibold leading-5 transition-all",
+                "rounded-lg border px-1.5 py-1 font-semibold leading-5 transition-all",
+                rtl
+                  ? "text-[15px]"
+                  : "min-w-7 text-[15px]",
                 clickable
                   ? "border-border hover:-translate-y-0.5 hover:border-primary/50"
                   : "cursor-default border-transparent text-transparent"
@@ -76,10 +84,18 @@ export function LetterPainter({
         })}
       </div>
 
+      {rtl && (
+        <p className="flex items-center gap-1.5 rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px] leading-5 text-muted-foreground">
+          <Info className="h-3.5 w-3.5 shrink-0" />
+          Kurdish &amp; Persian letters join inside a word — so whole words are
+          painted, exactly like the glass tubes of a real sign.
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-[11.5px] leading-5 text-muted-foreground">
           <MousePointerClick className="h-3.5 w-3.5 shrink-0" />
-          Click a letter here or directly on the preview to paint it.
+          Click a {rtl ? "word" : "letter"} here or directly on the preview to paint it.
         </p>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-muted-foreground">

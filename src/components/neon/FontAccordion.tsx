@@ -8,7 +8,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, Search, Type } from "lucide-react";
 import { NEON_FONTS, FONT_CATEGORIES, getFont, type FontCategory, type NeonFont } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
@@ -51,7 +50,7 @@ export function FontAccordion({ value, onChange }: FontAccordionProps) {
           className={cn(
             "gap-3 py-3.5 text-sm font-medium hover:no-underline [&[data-state=open]>svg]:rotate-180"
           )}
-          aria-label={`Font: ${active.name}. Click to browse all 27 fonts`}
+          aria-label={`Font: ${active.name}. Click to browse all ${NEON_FONTS.length} fonts`}
         >
           <span className="flex min-w-0 flex-1 items-center gap-3">
             <Type className="h-4 w-4 shrink-0 text-primary/70" />
@@ -66,7 +65,7 @@ export function FontAccordion({ value, onChange }: FontAccordionProps) {
             </span>
           </span>
           <span className="hidden shrink-0 text-[11px] font-normal text-muted-foreground sm:inline">
-            27 typefaces · searchable
+            {NEON_FONTS.length} typefaces · searchable
           </span>
         </AccordionTrigger>
         <AccordionContent className="pb-4">
@@ -79,7 +78,9 @@ export function FontAccordion({ value, onChange }: FontAccordionProps) {
               className="h-10 rounded-lg border-input pl-9 text-[13.5px]"
             />
           </div>
-          <ScrollArea className="max-h-[340px] pr-2">
+          {/* Full height — no scrolling box, no clipping: every font is
+              rendered in place and the page itself scrolls. */}
+          <div>
             <div className="grid grid-cols-3 gap-2">
               {groups.map(({ cat, fonts }) => (
                 <div key={cat.id} className="col-span-3 grid grid-cols-3 gap-2">
@@ -105,7 +106,7 @@ export function FontAccordion({ value, onChange }: FontAccordionProps) {
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
           <p className="mt-2.5 text-[11px] leading-5 text-muted-foreground">
             The preview updates live while you browse fonts.
           </p>

@@ -42,6 +42,7 @@ import {
   type ColorMode,
 } from "@/lib/neon";
 import { getColor } from "@/lib/colors";
+import { NEON_FONTS } from "@/lib/fonts";
 import {
   useDesign,
   splitLines,
@@ -350,7 +351,7 @@ export function Designer() {
                 <Type className="h-4 w-4 text-primary/80" />
                 Font
                 <span className="ml-auto text-[11px] font-normal text-muted-foreground">
-                  27 typefaces · searchable
+                  {NEON_FONTS.length} typefaces · searchable
                 </span>
               </div>
               <FontAccordion value={fontId} onChange={d.setFont} />

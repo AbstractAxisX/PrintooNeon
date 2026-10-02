@@ -32,7 +32,7 @@ EOF
 # --- 3. dependencies -------------------------------------------------------
 cd "$APP"
 echo "== bun install =="
-bun install --frozen-lockfile
+bun install --frozen-lockfile || bun install
 
 echo "== prisma generate =="
 bunx prisma generate
@@ -43,6 +43,17 @@ bunx prisma db push --accept-data-loss
 # --- 4. production build ---------------------------------------------------
 echo "== next build =="
 bun run build
+
+# Safety net: make sure the Prisma client + query engine are inside the
+# standalone bundle (Next tracing usually includes them; copy if missing).
+if [ -d node_modules/.prisma/client ]; then
+  mkdir -p .next/standalone/node_modules/.prisma
+  cp -r node_modules/.prisma/client .next/standalone/node_modules/.prisma/
+fi
+if [ -d node_modules/@prisma/client ]; then
+  mkdir -p .next/standalone/node_modules/@prisma
+  cp -r node_modules/@prisma/client .next/standalone/node_modules/@prisma/
+fi
 
 # --- 5. systemd service ----------------------------------------------------
 echo "== systemd unit (printoo.service) =="

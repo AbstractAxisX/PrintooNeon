@@ -109,6 +109,20 @@ jobs:
             -d '{"customerName":"Ext Check","phone":"5550102040","text":"TEST","fontId":"monoton","colorId":"iceblue","mode":"solid","widthCm":45}')
           echo "$resp"
           echo "$resp" | grep -q '"ok":true' && echo "EXTERNAL_API_OK"
+          echo "--- admin auth check ---"
+          login=$(curl -s -X POST --max-time 25 "http://$DEPLOY_HOST:$PORT/api/admin/login" \
+            -H "Content-Type: application/json" -d '{"password":"PrintooNeon-KeGs04A78WnF"}')
+          token=$(echo "$login" | sed -n 's/.*"token":"\([a-f0-9]*\)".*/\1/p')
+          if [ -n "$token" ]; then
+            echo "ADMIN_LOGIN_OK"
+            curl -s --max-time 25 -H "x-admin-token: $token" "http://$DEPLOY_HOST:$PORT/api/admin/orders" | head -c 200
+            echo ""
+            echo "ADMIN_LIST_OK"
+          else
+            echo "ADMIN_LOGIN_FAILED: $login"
+          fi
+          echo "--- kurdish font served ---"
+          curl -s -o /dev/null -w "GET /fonts/lalezar-400.woff2 -> %{http_code}\n" --max-time 25 "http://$DEPLOY_HOST:$PORT/fonts/lalezar-400.woff2"
 
       - name: Remove test orders
         if: ${{ github.event.inputs.mode == 'clean-tests' }}

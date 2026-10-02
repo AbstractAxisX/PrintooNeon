@@ -24,17 +24,31 @@ jobs:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       SSHPASS: ${{ secrets.DEPLOY_PASS }}
+      SSH_OPTS: "-o StrictHostKeyChecking=no -o ConnectTimeout=25 -o ControlMaster=auto -o ControlPath=/tmp/cm-%r@%h-%p -o ControlPersist=600"
     steps:
       - uses: actions/checkout@v4
 
       - name: Install sshpass
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
 
+      - name: Open SSH connection (with retries)
+        run: |
+          set -e
+          for i in 1 2 3 4 5 6; do
+            if sshpass -e ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" 'echo "SSH connection OK"'; then
+              exit 0
+            fi
+            echo "attempt $i failed — retrying in 20s"
+            sleep 20
+          done
+          echo "::error::Could not establish SSH connection"
+          exit 1
+
       - name: Inspect server (read-only)
         if: ${{ github.event.inputs.mode == 'inspect' }}
         run: |
           set -e
-          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=25 "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'EOS'
+          sshpass -e ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'EOS'
           echo "=== OS ==="
           uname -m; grep PRETTY /etc/os-release
           echo "=== RAM ==="; free -m | head -2
@@ -58,27 +72,33 @@ jobs:
         if: ${{ github.event.inputs.mode == 'deploy' }}
         run: |
           set -e
-          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=25 "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p /opt/printoo"
-          tar czf - \
-            --exclude=.git \
-            --exclude=node_modules \
-            --exclude=.next \
-            --exclude=dev.log \
-            --exclude=server.log \
-            --exclude=db \
-            --exclude=tool-results \
-            --exclude=agent-ctx \
-            --exclude=.env \
-            -C "$GITHUB_WORKSPACE" . \
-            | sshpass -e ssh -o StrictHostKeyChecking=no "$DEPLOY_USER@$DEPLOY_HOST" "tar xzf - -C /opt/printoo"
-          echo "upload done"
+          sshpass -e ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p /opt/printoo"
+          for i in 1 2 3; do
+            if tar czf - \
+              --exclude=.git \
+              --exclude=node_modules \
+              --exclude=.next \
+              --exclude=dev.log \
+              --exclude=server.log \
+              --exclude=db \
+              --exclude=tool-results \
+              --exclude=agent-ctx \
+              --exclude=.env \
+              -C "$GITHUB_WORKSPACE" . \
+              | sshpass -e ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "tar xzf - -C /opt/printoo"; then
+              echo "upload done"; exit 0
+            fi
+            echo "upload attempt $i failed — retrying"; sleep 10
+          done
+          echo "::error::upload failed"
+          exit 1
 
       - name: Build & launch on server
         if: ${{ github.event.inputs.mode == 'deploy' }}
         run: |
           set -e
           PORT="${{ github.event.inputs.port }}"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $PORT" < scripts/server-deploy.sh
+          sshpass -e ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $PORT" < scripts/server-deploy.sh
 
       - name: External reachability check
         if: ${{ github.event.inputs.mode == 'deploy' }}

@@ -43,6 +43,37 @@ import type { BackgroundSpec } from "./backgrounds";
 
 export type ColorMode = "solid" | "gradient" | "flow" | "perLetter" | "cycle";
 
+/** Tube style:
+ *  - double : the neon tube traces the OUTLINE of the letters (classic
+ *             hollow sign — two lines along every letter stroke)
+ *  - single : the text itself IS the tube — one solid glowing line */
+export type LineMode = "double" | "single";
+
+export const LINE_MODES: { id: LineMode; name: string; blurb: string }[] = [
+  {
+    id: "double",
+    name: "Double-line",
+    blurb: "The tube traces both edges of every letter — the classic hollow neon outline.",
+  },
+  {
+    id: "single",
+    name: "Single-line",
+    blurb: "The text itself is the glowing tube — one solid line, no border around it.",
+  },
+];
+
+export function getLineMode(id?: LineMode): LineMode {
+  return id === "single" ? "single" : "double";
+}
+
+/** Line style used for one line of the sign. Arabic-script text is ALWAYS
+ *  single-line: stroking an outline draws contour lines straight through
+ *  the joined letters (the «مـ ن» cut bug) — a fill keeps the joins
+ *  perfectly seamless. */
+export function lineModeForLine(rtl: boolean, spec: LineMode): LineMode {
+  return rtl || spec === "single" ? "single" : "double";
+}
+
 export const COLOR_MODES: { id: ColorMode; name: string; blurb: string }[] = [
   { id: "solid", name: "Solid", blurb: "One steady neon color" },
   { id: "gradient", name: "Gradient", blurb: "Smooth blend from one color to another" },
@@ -75,6 +106,9 @@ export interface NeonSpec {
   lines: string[];
   fontId: string;
   mode?: ColorMode;
+  /** tube style — outline (double) or solid text (single).
+ *  Arabic-script lines are forced to "single" regardless. */
+  lineMode?: LineMode;
   /** base color (solid mode / unpainted letters / initial brush) */
   colorId: string;
   /** second color (gradient mode) */
@@ -550,6 +584,21 @@ function strokeLine(
   ctx.strokeText(text, x, y);
 }
 
+/** single-line mode: paint the glyphs themselves (filled text — the shape
+ *  of the whole shaped string, so Arabic letter joins stay intact) */
+function fillLine(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  style: LineStyle,
+  alpha: number
+): void {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = style;
+  ctx.fillText(text, x, y);
+}
+
 /** group glyphs & colors per line once per frame */
 interface LineGroup {
   l: NeonLayout["line"][number];
@@ -599,6 +648,7 @@ function drawLitSign(
   dpr: number,
   fontId: string,
   mode: ColorMode,
+  lineMode: LineMode,
   layout: NeonLayout,
   frame: FrameColors,
   dark: boolean
@@ -625,12 +675,15 @@ function drawLitSign(
       if (!g.l.text) continue;
       lctx.font = fontCss(font, g.l.fontSize);
       lctx.direction = g.l.rtl ? "rtl" : "ltr";
+      const single = lineModeForLine(g.l.rtl, lineMode) === "single";
       if (g.paint) {
-        strokeLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, g.l.tube * 1.35, 0.9);
+        if (single) fillLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, 0.9);
+        else strokeLine(lctx, g.l.text, g.l.startX, g.l.y, g.paint.glow, g.l.tube * 1.35, 0.9);
       } else if (g.perGlyph) {
         for (let i = 0; i < g.boxes.length; i++) {
           const gb = g.boxes[i];
-          strokeLine(lctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].glow, g.l.tube * 1.35, 0.9);
+          if (single) fillLine(lctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].glow, 0.9);
+          else strokeLine(lctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].glow, g.l.tube * 1.35, 0.9);
         }
       }
     }
@@ -661,19 +714,26 @@ function drawLitSign(
         if (!g.l.text) continue;
         nctx.font = fontCss(font, g.l.fontSize);
         nctx.direction = g.l.rtl ? "rtl" : "ltr";
+        const single = lineModeForLine(g.l.rtl, lineMode) === "single";
         if (g.paint) {
           const glowCss = g.paint.glow as string;
           nctx.shadowColor = glowCss;
           nctx.shadowBlur = g.l.tube * 6.5;
-          strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.35);
-          strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.3);
+          if (single) {
+            fillLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, 0.35);
+            fillLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, 0.3);
+          } else {
+            strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.35);
+            strokeLine(nctx, g.l.text, g.l.startX, g.l.y, glowCss, g.l.tube * 1.2, 0.3);
+          }
         } else if (g.perGlyph) {
           for (let i = 0; i < g.boxes.length; i++) {
             const gb = g.boxes[i];
             const glowCss = g.perGlyph[i].glow as string;
             nctx.shadowColor = glowCss;
             nctx.shadowBlur = g.l.tube * 6.5;
-            strokeLine(nctx, gb.ch, gb.x, g.l.y, glowCss, g.l.tube * 1.2, 0.4);
+            if (single) fillLine(nctx, gb.ch, gb.x, g.l.y, glowCss, 0.4);
+            else strokeLine(nctx, gb.ch, gb.x, g.l.y, glowCss, g.l.tube * 1.2, 0.4);
           }
         }
       }
@@ -684,35 +744,61 @@ function drawLitSign(
     }
   }
 
-  /* ---- 3. glass tube body ---- */
+  /* ---- 3. glass tube body ----
+     single-line: a solid fill + a SAME-COLOR fattening stroke. The stroke is
+     invisible as a "border" — same opaque color, non-additive compositing:
+     it simply thickens the letter strokes a touch and merges seamlessly,
+     even where connected Arabic glyphs overlap. */
   for (const g of groups) {
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
+    const single = lineModeForLine(g.l.rtl, lineMode) === "single";
     if (g.paint) {
-      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube, 1);
+      if (single) {
+        fillLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, 1);
+        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube * 0.4, 1);
+      } else {
+        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube, 1);
+      }
     } else if (g.perGlyph) {
       for (let i = 0; i < g.boxes.length; i++) {
         const gb = g.boxes[i];
-        strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, g.l.tube, 1);
+        if (single) {
+          fillLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, 1);
+          strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, g.l.tube * 0.4, 1);
+        } else {
+          strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].tube, g.l.tube, 1);
+        }
       }
     }
   }
 
-  /* ---- 4. hot core + filament (additive) ---- */
+  /* ---- 4. hot core (additive) ----
+     single-line: one soft bright fill instead of core + filament strokes
+     (additive strokes would draw contour lines through joined glyphs). */
   nctx.globalCompositeOperation = "lighter";
   for (const g of groups) {
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
+    const single = lineModeForLine(g.l.rtl, lineMode) === "single";
     if (g.paint) {
-      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.core, g.l.tube * 0.45, 0.95);
-      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.filament, g.l.tube * 0.18, 0.9);
+      if (single) {
+        fillLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.core, 0.35);
+      } else {
+        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.core, g.l.tube * 0.45, 0.95);
+        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.filament, g.l.tube * 0.18, 0.9);
+      }
     } else if (g.perGlyph) {
       for (let i = 0; i < g.boxes.length; i++) {
         const gb = g.boxes[i];
-        strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].core, g.l.tube * 0.45, 0.95);
-        strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].filament, g.l.tube * 0.18, 0.9);
+        if (single) {
+          fillLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].core, 0.35);
+        } else {
+          strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].core, g.l.tube * 0.45, 0.95);
+          strokeLine(nctx, gb.ch, gb.x, g.l.y, g.perGlyph[i].filament, g.l.tube * 0.18, 0.9);
+        }
       }
     }
   }
@@ -727,6 +813,7 @@ function drawOffSign(
   nctx: CanvasRenderingContext2D,
   fontId: string,
   mode: ColorMode,
+  lineMode: LineMode,
   layout: NeonLayout,
   frame: FrameColors,
   dark: boolean
@@ -744,15 +831,28 @@ function drawOffSign(
     if (!g.l.text) continue;
     nctx.font = fontCss(font, g.l.fontSize);
     nctx.direction = g.l.rtl ? "rtl" : "ltr";
+    const single = lineModeForLine(g.l.rtl, lineMode) === "single";
     if (g.paint) {
-      // pale unlit glass + faint colored sheen
-      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), g.l.tube, 0.92);
-      strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube * 0.22, 0.28);
+      if (single) {
+        // pale unlit glass + a same-color touch of thickness + faint sheen
+        fillLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), 0.92);
+        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), g.l.tube * 0.35, 0.5);
+        fillLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, 0.22);
+      } else {
+        // pale unlit glass + faint colored sheen
+        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, rgbToCss(base), g.l.tube, 0.92);
+        strokeLine(nctx, g.l.text, g.l.startX, g.l.y, g.paint.tube, g.l.tube * 0.22, 0.28);
+      }
     } else if (g.perGlyph) {
       for (let i = 0; i < g.boxes.length; i++) {
         const gb = g.boxes[i];
         const glass = rgbToCss(lerpRgb(g.colors[i].tube, base, 0.55));
-        strokeLine(nctx, gb.ch, gb.x, g.l.y, glass, g.l.tube, 0.92);
+        if (single) {
+          fillLine(nctx, gb.ch, gb.x, g.l.y, glass, 0.92);
+          strokeLine(nctx, gb.ch, gb.x, g.l.y, glass, g.l.tube * 0.35, 0.5);
+        } else {
+          strokeLine(nctx, gb.ch, gb.x, g.l.y, glass, g.l.tube, 0.92);
+        }
       }
     }
   }
@@ -865,9 +965,9 @@ export function drawNeon(
   const neonCanvas = getScratch("neon", cw, ch, dpr);
   if (neonCtx && neonCanvas) {
     if (spec.on) {
-      drawLitSign(neonCtx, cw, ch, dpr, spec.fontId, mode, layout, frame, dark);
+      drawLitSign(neonCtx, cw, ch, dpr, spec.fontId, mode, getLineMode(spec.lineMode), layout, frame, dark);
     } else {
-      drawOffSign(neonCtx, spec.fontId, mode, layout, frame, dark);
+      drawOffSign(neonCtx, spec.fontId, mode, getLineMode(spec.lineMode), layout, frame, dark);
     }
 
     // 6. reflection below the sign (dark backgrounds, powered on)

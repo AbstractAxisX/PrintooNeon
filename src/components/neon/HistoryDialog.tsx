@@ -129,6 +129,8 @@ function HistoryList({ onOrdersChanged }: { onOrdersChanged?: () => void }) {
                       <span aria-hidden>·</span>
                       <span>{o.modeName}</span>
                       <span aria-hidden>·</span>
+                      <span>{o.lineMode === "single" ? "single-line" : "double-line"}</span>
+                      <span aria-hidden>·</span>
                       <span>{o.widthCm} cm</span>
                       {o.colors.length > 0 && (
                         <span className="flex items-center gap-1" aria-label="colors used">

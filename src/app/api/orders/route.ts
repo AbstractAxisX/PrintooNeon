@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { NEON_FONTS } from "@/lib/fonts";
 import { NEON_COLORS } from "@/lib/colors";
 import { BACKGROUNDS } from "@/lib/backgrounds";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,8 @@ const orderSchema = z.object({
   colorId: z.string().trim().min(1).max(40),
   colorId2: z.string().trim().min(1).max(40).optional().nullable(),
   mode: z.enum(["solid", "gradient", "flow", "perLetter", "cycle"]).optional(),
+  /** tube style: double (outline) or single (text itself is the tube) */
+  lineMode: z.enum(["double", "single"]).optional(),
   widthCm: z.number().int().min(20).max(250),
   backgroundId: z.string().trim().max(60).optional().nullable(),
   configJson: z.string().max(20_000).optional().nullable(),
@@ -49,6 +52,14 @@ const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";
 
 export async function POST(req: NextRequest) {
   try {
+    // gentle flood guard: 12 orders per hour per client
+    if (!rateLimit(`orders:${clientIp(req)}`, 12, 60 * 60 * 1000)) {
+      return NextResponse.json(
+        { error: "Too many orders from this device — try again later." },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
 
     // normalize Persian/Arabic digits before validation
@@ -114,6 +125,7 @@ export async function POST(req: NextRequest) {
         colorId2: d.colorId2 ?? null,
         colorName2: color2?.name ?? null,
         mode: d.mode ?? "solid",
+        lineMode: d.lineMode ?? "double",
         widthCm: d.widthCm,
         backgroundId: bg?.id ?? d.backgroundId ?? null,
         configJson: d.configJson ?? null,

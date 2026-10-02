@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 /** GET /api/admin/orders — metadata only (images are fetched per order) */
 export async function GET(req: NextRequest) {
-  if (!isAdminRequest(req)) {
+  if (!(await isAdminRequest(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
         colorId2: true,
         colorName2: true,
         mode: true,
+        lineMode: true,
         widthCm: true,
         backgroundId: true,
         colorsJson: true,

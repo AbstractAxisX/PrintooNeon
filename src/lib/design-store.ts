@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { ColorMode } from "@/lib/neon";
+import type { ColorMode, LineMode } from "@/lib/neon";
 
 export const MAX_LINES = 3;
 export const MAX_CHARS_PER_LINE = 30;
@@ -15,6 +15,9 @@ export interface DesignState {
   text: string;
   fontId: string;
   mode: ColorMode;
+  /** tube style — outline (double) or solid text (single).
+ *  Arabic-script lines render single-line regardless. */
+  lineMode: LineMode;
   /** solid color / fallback for unpainted letters */
   colorId: string;
   /** gradient mode: second color */
@@ -39,6 +42,7 @@ export interface DesignState {
   setText: (t: string) => void;
   setFont: (id: string) => void;
   setMode: (m: ColorMode) => void;
+  setLineMode: (m: LineMode) => void;
   setColor: (id: string) => void;
   setColor2: (id: string) => void;
   setBrush: (id: string) => void;
@@ -82,6 +86,7 @@ const DEFAULT_DESIGN = {
   text: "Good Vibes",
   fontId: "pacifico",
   mode: "solid" as ColorMode,
+  lineMode: "double" as LineMode,
   colorId: "rose",
   colorId2: "ice",
   brushColorId: "rose",
@@ -106,6 +111,7 @@ export const useDesign = create<DesignState>()(
       setFont: (fontId) => set({ fontId }),
       setMode: (mode) =>
         set((s) => ({ mode, brushColorId: mode === "perLetter" ? s.colorId : s.brushColorId })),
+      setLineMode: (lineMode) => set({ lineMode }),
       setColor: (colorId) => set({ colorId }),
       setColor2: (colorId2) => set({ colorId2 }),
       setBrush: (brushColorId) => set({ brushColorId }),
@@ -147,7 +153,7 @@ export const useDesign = create<DesignState>()(
     {
       name: "printoo-neon-draft",
       storage: createJSONStorage(() => localStorage),
-      version: 4,
+      version: 5,
       // migrate older drafts (v3 and below) instead of dropping them
       migrate: (persisted) => {
         const old = (persisted ?? {}) as Record<string, unknown>;
@@ -158,6 +164,8 @@ export const useDesign = create<DesignState>()(
         }
         // v3 -> v4: gradient second color
         if (typeof old.colorId2 !== "string") next.colorId2 = DEFAULT_DESIGN.colorId2;
+        // v4 -> v5: line mode (double outline / single solid)
+        if (old.lineMode !== "single" && old.lineMode !== "double") next.lineMode = "double";
         // sanitize the letter-color map
         if (typeof next.letterColors !== "object" || next.letterColors === null || Array.isArray(next.letterColors)) {
           next.letterColors = {};

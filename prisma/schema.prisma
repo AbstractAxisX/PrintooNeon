@@ -24,6 +24,7 @@ model Order {
   colorId2     String? // gradient mode: second color
   colorName2   String? // gradient mode: second color name
   mode         String   @default("solid") // solid | gradient | flow | perLetter | cycle
+  lineMode     String   @default("double") // double (outline tube) | single (text itself is the tube; forced for Arabic script)
   widthCm      Int
   heightCm     Float? // estimated height
   backgroundId String? // wall photo or solid background id
@@ -36,4 +37,12 @@ model Order {
 
   status       String   @default("new") // new | contacted | done
   createdAt    DateTime @default(now())
+}
+
+/** Single admin account — password hash, changeable from the admin panel.
+ *  Seeded from ADMIN_PASSWORD env (or default) on first use. */
+model AdminConfig {
+  id           Int      @id @default(1)
+  passwordHash String
+  updatedAt    DateTime @updatedAt
 }

@@ -18,6 +18,8 @@ export interface OrderHistoryEntry {
   text: string;
   fontName: string;
   modeName: string;
+  /** tube style actually rendered — "single" | "double" (older entries: undefined) */
+  lineMode?: "single" | "double";
   /** colors actually used, in order */
   colors: HistoryColor[];
   widthCm: number;

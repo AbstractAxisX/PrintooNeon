@@ -33,8 +33,10 @@ import {
   getColor,
   getFont,
   getMode,
+  getLineMode,
   COLOR_MODES,
   isAnimatedMode,
+  hasRTL,
   textTokens,
   type NeonSpec,
 } from "@/lib/neon";
@@ -73,6 +75,8 @@ export function OrderDialog({
   const mode = getMode(spec.mode);
   const modeName = COLOR_MODES.find((m) => m.id === mode)?.name ?? "Solid";
   const displayText = useMemo(() => text.trim() || "NEON", [text]);
+  // Arabic script is always rendered single-line (outline would cut joins)
+  const effLineMode = hasRTL(displayText) ? "single" : getLineMode(spec.lineMode);
 
   /** human-readable summary of the full color setup */
   const colorSummary = useMemo(() => {
@@ -126,6 +130,7 @@ export function OrderDialog({
     () =>
       JSON.stringify({
         mode,
+        lineMode: effLineMode,
         colorId: spec.colorId,
         colorId2: spec.colorId2 ?? null,
         letterColors: spec.letterColors ?? {},
@@ -137,7 +142,7 @@ export function OrderDialog({
         background: spec.background ?? { id: "brick" },
         on: spec.on,
       }),
-    [mode, spec]
+    [mode, effLineMode, spec]
   );
 
   const normalizedPhone = normalizeDigits(phone).replace(/[\s-]/g, "");
@@ -211,6 +216,7 @@ export function OrderDialog({
           colorId: color.id,
           colorId2: mode === "gradient" ? color2.id : null,
           mode,
+          lineMode: effLineMode,
           widthCm,
           backgroundId: spec.background?.id ?? "brick",
           configJson,
@@ -227,6 +233,7 @@ export function OrderDialog({
         text: displayText,
         fontName: font.name,
         modeName,
+        lineMode: effLineMode,
         colors: orderedColors,
         widthCm,
         createdAt: new Date().toISOString(),
@@ -304,6 +311,9 @@ export function OrderDialog({
                 </Badge>
                 <Badge variant="secondary" className="font-medium">
                   {font.name.split(" ")[0]}
+                </Badge>
+                <Badge variant="secondary" className="font-medium">
+                  {effLineMode === "single" ? "Single-line" : "Double-line"}
                 </Badge>
                 <Badge variant="secondary" className="max-w-full truncate font-medium">
                   <span className="flex items-center gap-1">

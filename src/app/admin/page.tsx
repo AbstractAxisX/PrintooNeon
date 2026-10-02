@@ -1,8 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   Lock,
@@ -18,8 +34,11 @@ import {
   Type as TypeIcon,
   Palette,
   Clock,
+  KeyRound,
+  ChevronRight,
+  Spline,
 } from "lucide-react";
-import { hasRTL } from "@/lib/neon";
+import { COLOR_MODES, hasRTL } from "@/lib/neon";
 import { cn } from "@/lib/utils";
 
 interface AdminOrder {
@@ -36,6 +55,7 @@ interface AdminOrder {
   colorId2: string | null;
   colorName2: string | null;
   mode: string;
+  lineMode: string;
   widthCm: number;
   backgroundId: string | null;
   colorsJson: string | null;
@@ -58,11 +78,16 @@ const STATUSES: { id: string; label: string }[] = [
   { id: "done", label: "Done" },
 ];
 
+const MODE_NAMES = new Map(COLOR_MODES.map((m) => [m.id as string, m.name]));
+
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<AdminOrder | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
 
   useEffect(() => {
     setToken(window.localStorage.getItem(TOKEN_KEY));
@@ -92,6 +117,21 @@ export default function AdminPage() {
     if (token) loadOrders(token);
   }, [token, loadOrders]);
 
+  function openDetail(order: AdminOrder) {
+    setSelected(order);
+    setDetailOpen(true);
+  }
+
+  function patchOrder(id: string, patch: Partial<AdminOrder>) {
+    setOrders((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    setSelected((s) => (s && s.id === id ? { ...s, ...patch } : s));
+  }
+
+  function removeOrder(id: string) {
+    setOrders((l) => l.filter((x) => x.id !== id));
+    setSelected((s) => (s && s.id === id ? null : s));
+  }
+
   if (!checked) {
     return (
       <main className="grid min-h-screen place-items-center bg-background">
@@ -101,23 +141,42 @@ export default function AdminPage() {
   }
 
   if (!token) {
-    return <LoginCard onLogin={(t) => { window.localStorage.setItem(TOKEN_KEY, t); setToken(t); }} />;
+    return (
+      <LoginCard
+        onLogin={(t) => {
+          window.localStorage.setItem(TOKEN_KEY, t);
+          setToken(t);
+        }}
+      />
+    );
   }
 
   return (
-    <main className="min-h-screen bg-background px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-5xl">
+    <main className="min-h-screen bg-background px-3 py-8 sm:px-8">
+      <div className="mx-auto max-w-6xl">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <Package className="h-6 w-6 text-primary" />
             <div>
-              <h1 className="text-xl font-extrabold leading-tight">PrintooNeon · Orders</h1>
+              <h1 className="text-xl font-extrabold leading-tight">
+                PrintooNeon · Orders
+              </h1>
               <p className="text-[12px] text-muted-foreground">
-                {orders.length} order{orders.length === 1 ? "" : "s"} · newest first
+                {orders.length} order{orders.length === 1 ? "" : "s"} · newest first ·
+                click a row for the full detail
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPwOpen(true)}
+              className="gap-1.5"
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              Change password
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -125,7 +184,11 @@ export default function AdminPage() {
               disabled={loading}
               className="gap-1.5"
             >
-              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
               Refresh
             </Button>
             <Button
@@ -136,6 +199,7 @@ export default function AdminPage() {
                 window.localStorage.removeItem(TOKEN_KEY);
                 setToken(null);
                 setOrders([]);
+                setSelected(null);
               }}
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -153,12 +217,129 @@ export default function AdminPage() {
             </p>
           </div>
         ) : (
-          <ul className="grid gap-4 sm:grid-cols-2">
-            {orders.map((o) => (
-              <OrderCard key={o.id} order={o} token={token} onDeleted={(id) => setOrders((l) => l.filter((x) => x.id !== id))} onStatus={(id, s) => setOrders((l) => l.map((x) => (x.id === id ? { ...x, status: s } : x)))} />
-            ))}
-          </ul>
+          <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+            <div className="overflow-x-auto">
+              <Table className="min-w-[720px]">
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="w-[90px]">Order</TableHead>
+                    <TableHead className="hidden w-[150px] md:table-cell">Placed</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead className="hidden md:table-cell">Phone</TableHead>
+                    <TableHead>Sign text</TableHead>
+                    <TableHead className="hidden w-[70px] sm:table-cell">Size</TableHead>
+                    <TableHead className="hidden w-[130px] sm:table-cell">Style</TableHead>
+                    <TableHead className="w-[96px]">Status</TableHead>
+                    <TableHead className="w-10" aria-label="Open detail" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading && orders.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="py-14 text-center">
+                        <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {orders.map((o) => (
+                    <TableRow
+                      key={o.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open order ${o.code}`}
+                      onClick={() => openDetail(o)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openDetail(o);
+                        }
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <TableCell className="font-mono text-[13px] font-bold tracking-wide text-primary">
+                        {o.code}
+                      </TableCell>
+                      <TableCell className="hidden text-[12px] text-muted-foreground md:table-cell">
+                        {formatDate(o.createdAt)}
+                      </TableCell>
+                      <TableCell className="max-w-[150px] truncate text-[13px] font-semibold">
+                        {o.customerName}
+                      </TableCell>
+                      <TableCell className="hidden text-[12.5px] md:table-cell">
+                        <a
+                          href={`tel:${o.phone}`}
+                          dir="ltr"
+                          onClick={(e) => e.stopPropagation()}
+                          className="font-semibold text-primary hover:underline"
+                        >
+                          {o.phone}
+                        </a>
+                      </TableCell>
+                      <TableCell className="max-w-[220px]">
+                        <span
+                          dir={hasRTL(o.text) ? "rtl" : "ltr"}
+                          className={cn(
+                            "block truncate text-[13px] font-semibold",
+                            hasRTL(o.text) && "text-right"
+                          )}
+                        >
+                          {o.text.replace(/\n/g, " · ")}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden text-[12.5px] tabular-nums sm:table-cell">
+                        {o.widthCm} cm
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <span className="text-[12px]">
+                          {MODE_NAMES.get(o.mode) ?? o.mode}
+                          <span className="text-muted-foreground">
+                            {" · "}
+                            {o.lineMode === "single" ? "single" : "double"}
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill status={o.status} />
+                      </TableCell>
+                      <TableCell className="pr-3">
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/60" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         )}
+
+        {/* order detail — opens when a table row is clicked */}
+        {selected && (
+          <OrderDetailDialog
+            order={selected}
+            token={token}
+            open={detailOpen}
+            onOpenChange={(v) => {
+              setDetailOpen(v);
+              if (!v) setSelected(null);
+            }}
+            onStatus={(id, status) => patchOrder(id, { status })}
+            onDeleted={(id) => {
+              removeOrder(id);
+              setDetailOpen(false);
+            }}
+          />
+        )}
+
+        {/* change the admin password from inside the panel */}
+        <PasswordDialog
+          open={pwOpen}
+          onOpenChange={setPwOpen}
+          token={token}
+          onTokenChanged={(t) => {
+            window.localStorage.setItem(TOKEN_KEY, t);
+            setToken(t);
+          }}
+        />
       </div>
     </main>
   );
@@ -220,33 +401,51 @@ function LoginCard({ onLogin }: { onLogin: (token: string) => void }) {
   );
 }
 
-/* ---------------- order card ---------------- */
+/* ---------------- order detail dialog ---------------- */
 
-function OrderCard({
+function OrderDetailDialog({
   order,
   token,
-  onDeleted,
+  open,
+  onOpenChange,
   onStatus,
+  onDeleted,
 }: {
   order: AdminOrder;
   token: string;
-  onDeleted: (id: string) => void;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
   onStatus: (id: string, status: string) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [image, setImage] = useState<string | null>(null);
   const [imgBusy, setImgBusy] = useState(order.hasImage);
   const [busy, setBusy] = useState(false);
-  const askedRef = useRef(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // fetch the (possibly animated) design preview when the dialog opens
   useEffect(() => {
-    if (!order.hasImage || askedRef.current) return;
-    askedRef.current = true;
+    if (!open) return;
+    setImage(null);
+    setConfirmDelete(false);
+    setImgBusy(order.hasImage);
+    if (!order.hasImage) return;
+    let alive = true;
     fetch(`/api/admin/orders/${order.id}?image=1`, { headers: { "x-admin-token": token } })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => setImage(d?.order?.imageData ?? null))
-      .catch(() => setImage(null))
-      .finally(() => setImgBusy(false));
-  }, [order.hasImage, order.id, token]);
+      .then((d) => {
+        if (alive) setImage(d?.order?.imageData ?? null);
+      })
+      .catch(() => {
+        if (alive) setImage(null);
+      })
+      .finally(() => {
+        if (alive) setImgBusy(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open, order.id, order.hasImage, token]);
 
   const colors: AdminColor[] = (() => {
     try {
@@ -268,6 +467,7 @@ function OrderCard({
       });
       if (!res.ok) throw new Error();
       onStatus(order.id, status);
+      toast.success(`Order ${order.code} → ${status}`);
     } catch {
       toast.error("Could not update the order.");
     } finally {
@@ -276,7 +476,10 @@ function OrderCard({
   }
 
   async function remove() {
-    if (!window.confirm(`Delete order ${order.code}? This cannot be undone.`)) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch(`/api/admin/orders/${order.id}`, {
@@ -294,132 +497,267 @@ function OrderCard({
   }
 
   return (
-    <li className="flex flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
-      {/* design preview — GIFs animate right in the list */}
-      <div className="relative aspect-[8/5] w-full bg-[#14121a]">
-        {imgBusy && (
-          <div className="absolute inset-0 grid place-items-center">
-            <Loader2 className="h-5 w-5 animate-spin text-white/40" />
-          </div>
-        )}
-        {image ? (
-          <img
-            src={image}
-            alt={`Design for order ${order.code}`}
-            className="h-full w-full object-contain"
-          />
-        ) : (
-          !imgBusy && (
-            <div className="grid h-full place-items-center text-[12px] text-white/30">
-              no preview attached
-            </div>
-          )
-        )}
-        <span className="absolute left-2.5 top-2.5 rounded-md bg-black/55 px-2 py-1 font-mono text-[12.5px] font-bold tracking-wider text-white backdrop-blur">
-          {order.code}
-        </span>
-        {order.isGif && (
-          <span className="absolute right-2.5 top-2.5 rounded-md bg-black/55 px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-amber-300 backdrop-blur">
-            GIF · animated
-          </span>
-        )}
-        <StatusPill status={order.status} />
-      </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-2xl p-0 sm:max-w-lg">
+        <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogTitle className="flex flex-wrap items-center gap-2.5 text-lg font-extrabold">
+            <span className="font-mono tracking-wider text-primary">{order.code}</span>
+            <StatusPill status={order.status} />
+          </DialogTitle>
+          <DialogDescription className="text-[12.5px] text-muted-foreground">
+            Placed {new Date(order.createdAt).toLocaleString()}
+          </DialogDescription>
+        </DialogHeader>
 
-      <div className="flex flex-1 flex-col gap-2.5 p-4">
-        <p
-          dir={rtl ? "rtl" : "ltr"}
-          className={cn(
-            "text-[17px] font-bold leading-snug text-foreground",
-            rtl && "text-right"
-          )}
-        >
-          {order.text.replace(/\n/g, " · ")}
-        </p>
-
-        <dl className="grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5 text-[12.5px]">
-          <Row icon={<User className="h-3.5 w-3.5" />} label="Customer">
-            {order.customerName}
-          </Row>
-          <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone">
-            <a href={`tel:${order.phone}`} className="font-semibold text-primary" dir="ltr">
-              {order.phone}
-            </a>
-          </Row>
-          <Row icon={<TypeIcon className="h-3.5 w-3.5" />} label="Font">
-            {order.fontName}
-          </Row>
-          <Row icon={<Palette className="h-3.5 w-3.5" />} label="Mode">
-            {order.mode}
-          </Row>
-          <Row icon={<Ruler className="h-3.5 w-3.5" />} label="Size">
-            {order.widthCm} cm wide
-          </Row>
-          <Row icon={<Clock className="h-3.5 w-3.5" />} label="Placed">
-            {new Date(order.createdAt).toLocaleString()}
-          </Row>
-        </dl>
-
-        {colors.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              colors
-            </span>
-            {colors.map((c, i) => (
-              <span
-                key={c.id + i}
-                className="flex items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 text-[11px] font-medium"
-              >
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ background: c.tube, boxShadow: `0 0 6px ${c.tube}` }}
-                  aria-hidden
-                />
-                {i + 1}. {c.name}
+        <div className="flex flex-col gap-4 px-6 py-5">
+          {/* design preview — GIFs animate right in the dialog */}
+          <div className="relative aspect-[8/5] w-full overflow-hidden rounded-xl bg-[#14121a]">
+            {imgBusy && (
+              <div className="absolute inset-0 grid place-items-center">
+                <Loader2 className="h-5 w-5 animate-spin text-white/40" />
+              </div>
+            )}
+            {image ? (
+              <img
+                src={image}
+                alt={`Design for order ${order.code}`}
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              !imgBusy && (
+                <div className="grid h-full place-items-center text-[12px] text-white/30">
+                  no preview attached
+                </div>
+              )
+            )}
+            {order.isGif && (
+              <span className="absolute right-2.5 top-2.5 rounded-md bg-black/55 px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-amber-300 backdrop-blur">
+                GIF · animated
               </span>
-            ))}
+            )}
           </div>
-        )}
 
-        {order.note && (
-          <p className="flex items-start gap-2 rounded-lg border border-dashed px-2.5 py-2 text-[12px] leading-5 text-muted-foreground">
-            <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {order.note}
+          <p
+            dir={rtl ? "rtl" : "ltr"}
+            className={cn(
+              "text-[18px] font-bold leading-snug text-foreground",
+              rtl && "text-right"
+            )}
+          >
+            {order.text.replace(/\n/g, " · ")}
           </p>
-        )}
 
-        <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1.5">
-          {STATUSES.map((s) => (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-[12.5px]">
+            <Row icon={<User className="h-3.5 w-3.5" />} label="Customer">
+              {order.customerName}
+            </Row>
+            <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone">
+              <a href={`tel:${order.phone}`} className="font-semibold text-primary" dir="ltr">
+                {order.phone}
+              </a>
+            </Row>
+            <Row icon={<TypeIcon className="h-3.5 w-3.5" />} label="Font">
+              {order.fontName}
+            </Row>
+            <Row icon={<Palette className="h-3.5 w-3.5" />} label="Colors">
+              {order.mode === "gradient" && order.colorName2
+                ? `${order.colorName} → ${order.colorName2} (gradient)`
+                : MODE_NAMES.get(order.mode) ?? order.mode}
+            </Row>
+            <Row icon={<Spline className="h-3.5 w-3.5" />} label="Tube">
+              {order.lineMode === "single" ? "Single-line (solid text)" : "Double-line (outline)"}
+            </Row>
+            <Row icon={<Ruler className="h-3.5 w-3.5" />} label="Size">
+              {order.widthCm} cm wide
+            </Row>
+            <Row icon={<Clock className="h-3.5 w-3.5" />} label="Placed">
+              {formatDate(order.createdAt)}
+            </Row>
+          </dl>
+
+          {colors.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                colors in order
+              </span>
+              {colors.map((c, i) => (
+                <span
+                  key={c.id + i}
+                  className="flex items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 text-[11px] font-medium"
+                >
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ background: c.tube, boxShadow: `0 0 6px ${c.tube}` }}
+                    aria-hidden
+                  />
+                  {i + 1}. {c.name}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {order.note && (
+            <p className="flex items-start gap-2 rounded-lg border border-dashed px-2.5 py-2 text-[12px] leading-5 text-muted-foreground">
+              <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {order.note}
+            </p>
+          )}
+
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t pt-4">
+            {STATUSES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                disabled={busy || order.status === s.id}
+                onClick={() => setStatus(s.id)}
+                className={cn(
+                  "rounded-lg border px-2.5 py-1.5 text-[11.5px] font-semibold transition-all",
+                  order.status === s.id
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
             <button
-              key={s.id}
               type="button"
-              disabled={busy || order.status === s.id}
-              onClick={() => setStatus(s.id)}
+              disabled={busy}
+              onClick={remove}
+              aria-label={`Delete order ${order.code}`}
               className={cn(
-                "rounded-lg border px-2.5 py-1.5 text-[11.5px] font-semibold transition-all",
-                order.status === s.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border text-muted-foreground hover:bg-muted"
+                "ml-auto flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[11.5px] font-semibold transition-all",
+                confirmDelete
+                  ? "border-destructive bg-destructive text-destructive-foreground"
+                  : "border-transparent text-destructive hover:border-destructive/40 hover:bg-destructive/10"
               )}
             >
-              {s.label}
+              <Trash2 className="h-3.5 w-3.5" />
+              {confirmDelete ? "Really delete?" : "Delete"}
             </button>
-          ))}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={remove}
-            aria-label={`Delete order ${order.code}`}
-            className="ml-auto flex items-center gap-1 rounded-lg border border-transparent px-2 py-1.5 text-[11.5px] font-semibold text-destructive transition-all hover:border-destructive/40 hover:bg-destructive/10"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Delete
-          </button>
+          </div>
         </div>
-      </div>
-    </li>
+      </DialogContent>
+    </Dialog>
   );
 }
+
+/* ---------------- change password dialog ---------------- */
+
+function PasswordDialog({
+  open,
+  onOpenChange,
+  token,
+  onTokenChanged,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  token: string | null;
+  onTokenChanged: (t: string) => void;
+}) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const nextValid = next.length >= 6;
+  const confirmValid = next === confirm;
+  const canSubmit = !!current && nextValid && confirmValid && !busy;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit || !token) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": token },
+        body: JSON.stringify({ current, next }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Could not change the password");
+      onTokenChanged(data.token);
+      toast.success("Password changed. Other sessions are now logged out.");
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not change the password");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="rounded-2xl sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-lg font-extrabold">
+            <KeyRound className="h-5 w-5 text-primary" />
+            Change password
+          </DialogTitle>
+          <DialogDescription className="text-[12.5px] leading-5 text-muted-foreground">
+            The new password applies immediately — sessions on other devices
+            get logged out.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3.5 pt-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="pw-current" className="text-[13px] font-semibold">
+              Current password
+            </Label>
+            <Input
+              id="pw-current"
+              type="password"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              autoFocus
+              autoComplete="current-password"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="pw-next" className="text-[13px] font-semibold">
+              New password
+            </Label>
+            <Input
+              id="pw-next"
+              type="password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              autoComplete="new-password"
+              className={next && !nextValid ? "border-destructive focus-visible:ring-destructive" : ""}
+            />
+            {next && !nextValid && (
+              <p className="text-[11.5px] text-destructive">At least 6 characters.</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="pw-confirm" className="text-[13px] font-semibold">
+              Repeat new password
+            </Label>
+            <Input
+              id="pw-confirm"
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="new-password"
+              className={confirm && !confirmValid ? "border-destructive focus-visible:ring-destructive" : ""}
+            />
+            {confirm && !confirmValid && (
+              <p className="text-[11.5px] text-destructive">Passwords don&apos;t match.</p>
+            )}
+          </div>
+          <Button type="submit" className="mt-1 w-full font-bold" disabled={!canSubmit}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save new password"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------------- helpers ---------------- */
 
 function Row({
   icon,
@@ -451,11 +789,19 @@ function StatusPill({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        "absolute bottom-2.5 left-2.5 rounded-md px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white backdrop-blur",
+        "inline-flex rounded-md px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white",
         style
       )}
     >
       {status}
     </span>
   );
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return `today ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }

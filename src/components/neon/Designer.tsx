@@ -23,6 +23,7 @@ import {
   Waves,
   Paintbrush,
   Repeat,
+  Spline,
   Image as ImageIcon,
   History,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import { LetterPainter } from "./LetterPainter";
 import { BackgroundPicker } from "./BackgroundPicker";
 import {
   COLOR_MODES,
+  LINE_MODES,
   downloadNeonFile,
   estimateSizeCm,
   getMode,
@@ -43,6 +45,7 @@ import {
   type NeonSpec,
   type NeonLayout,
   type ColorMode,
+  type LineMode,
 } from "@/lib/neon";
 import { getColor } from "@/lib/colors";
 import { NEON_FONTS, getFont } from "@/lib/fonts";
@@ -72,6 +75,7 @@ export function Designer() {
     text,
     fontId,
     mode,
+    lineMode,
     colorId,
     colorId2,
     brushColorId,
@@ -117,6 +121,7 @@ export function Designer() {
       lines: splitLines(text),
       fontId,
       mode,
+      lineMode,
       colorId,
       colorId2,
       letterColors,
@@ -132,6 +137,7 @@ export function Designer() {
       text,
       fontId,
       mode,
+      lineMode,
       colorId,
       colorId2,
       letterColors,
@@ -221,6 +227,9 @@ export function Designer() {
   const activeColor = getColor(colorId);
   const activeColor2 = getColor(colorId2);
   const activeBrush = getColor(brushColorId);
+
+  // Arabic-script text always renders single-line (outline cuts joined letters)
+  const effLineMode: LineMode = textRtl ? "single" : lineMode;
 
   return (
     <section id="designer" className="scroll-mt-24">
@@ -616,6 +625,78 @@ export function Designer() {
                 </div>
               </div>
             )}
+
+            {/* ---- tube style: double-line outline / single-line solid ---- */}
+            <div>
+              <div className="field-label">
+                <Spline className="h-4 w-4 text-primary/80" />
+                Tube style
+                <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+                  {textRtl ? "single-line only" : "pick a look"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Tube style">
+                {LINE_MODES.map((m) => {
+                  const active = effLineMode === m.id;
+                  const locked = textRtl && m.id === "double";
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      aria-disabled={locked || undefined}
+                      disabled={locked}
+                      title={
+                        locked
+                          ? "Persian/Kurdish text always renders single-line — an outline tube would cut between joined letters"
+                          : m.blurb
+                      }
+                      onClick={() => d.setLineMode(m.id)}
+                      className={cn(
+                        "flex flex-col items-center gap-1 rounded-xl border px-2 py-3 transition-all duration-200",
+                        active
+                          ? "border-primary bg-primary/5 shadow-md shadow-primary/20"
+                          : "border-border text-foreground/70 hover:border-primary/40 hover:bg-muted/50",
+                        locked &&
+                          "cursor-not-allowed opacity-40 hover:border-border hover:bg-transparent"
+                      )}
+                    >
+                      <span
+                        className="select-none text-[19px] font-bold leading-tight"
+                        style={
+                          m.id === "single"
+                            ? {
+                                color: activeColor.tube,
+                                textShadow: `0 0 10px ${activeColor.glow}`,
+                              }
+                            : {
+                                color: "transparent",
+                                WebkitTextStroke: `1.1px ${activeColor.tube}`,
+                              }
+                        }
+                        aria-hidden
+                      >
+                        Neon
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[12px] font-bold leading-tight",
+                          active ? "text-primary" : "text-foreground/70"
+                        )}
+                      >
+                        {m.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11.5px] leading-5 text-muted-foreground">
+                {textRtl
+                  ? "Persian & Kurdish always render single-line — the text itself becomes the tube so joined letters never get cut."
+                  : LINE_MODES.find((m) => m.id === effLineMode)?.blurb}
+              </p>
+            </div>
 
             {/* ---- background ---- */}
             <div>

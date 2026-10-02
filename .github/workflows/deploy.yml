@@ -117,15 +117,16 @@ jobs:
           sshpass -e ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'EOS'
           set -e
           cd /opt/printoo
-          cat > /tmp/clean.mjs <<'JS'
+          export DATABASE_URL=file:/opt/printoo/db/custom.db
+          cat > clean.tmp.mjs <<'JS'
           import { PrismaClient } from "@prisma/client";
           const db = new PrismaClient();
           const r = await db.order.deleteMany({ where: { customerName: { in: ["Health Check", "Ext Check"] } } });
           console.log("deleted test orders:", r.count);
           await db.$disconnect();
           JS
-          /root/.bun/bin/bun /tmp/clean.mjs
-          rm -f /tmp/clean.mjs
+          /root/.bun/bin/bun clean.tmp.mjs
+          rm -f clean.tmp.mjs
           echo CLEAN_OK
           EOS
 
